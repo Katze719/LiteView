@@ -58,10 +58,10 @@ Alternatively, use the provided GitHub Actions workflow to automate the build pr
 ## 🖼️ Screenshots
 
 ### Monitor Selection
-![Monitor Selection](https://via.placeholder.com/600x300?text=Monitor+Selection)
+![Monitor Selection](./docs/images/monitor_selection.png)
 
 ### Real-Time Viewer
-![Real-Time Viewer](https://via.placeholder.com/600x300?text=Real-Time+Viewer)
+![Real-Time Viewer](./docs/images/monitor_capture.png)
 
 ## 🛡️ Requirements
 
