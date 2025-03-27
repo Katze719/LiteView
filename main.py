@@ -86,6 +86,7 @@ class ScreenViewer(QtWidgets.QWidget):
         self.timer.start(15)  # Update every 15ms (~66 FPS)
 
         self.current_pixmap = None  # Store the current pixmap for resizing
+        self.drag_position = None  # Track the drag position
 
     def resizeEvent(self, event):
         """
@@ -124,6 +125,30 @@ class ScreenViewer(QtWidgets.QWidget):
                 print("Error: Pixmap is empty.")
         except Exception as e:
             print(f"Error capturing the screen: {e}")
+
+    def mousePressEvent(self, event):
+        """
+        Handle mouse press events to initiate window dragging.
+        """
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        """
+        Handle mouse move events to move the window.
+        """
+        if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self.drag_position is not None:
+            self.move(event.globalPosition().toPoint() - self.drag_position)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        """
+        Handle mouse release events to stop window dragging.
+        """
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.drag_position = None
+            event.accept()
 
 class ScreenPreview(QtWidgets.QWidget):
     """
