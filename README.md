@@ -1,5 +1,7 @@
 # 🌟 LiteView
 
+Inspired by the need for a simple, cross-platform screen viewer.
+
 LiteView is a lightweight screen viewer application built with Python and PyQt6. It allows you to preview and select monitors, and dynamically view their content in real-time. 🚀
 
 ## ✨ Features
@@ -75,13 +77,4 @@ Contributions are welcome! Feel free to open issues or submit pull requests. �
 
 ## 📄 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## ❤️ Acknowledgments
-
-- Thanks to the developers of PyQt6 for their amazing library.
-- Inspired by the need for a simple, cross-platform screen viewer.
-
----
-
-Made with 💻 and ❤️ by [Your Name](https://github.com/Katze719)
+This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for details.
