@@ -2,9 +2,10 @@ name: Build LiteView
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build-linux:
@@ -29,7 +30,18 @@ jobs:
         env:
           DISPLAY: ":0"
 
-      - name: Upload artifact
+      - name: Upload artifact (for release or build job)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/main
+          asset_name: liteview-linux
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact (for build job only)
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v3
         with:
           name: liteview-linux
@@ -55,7 +67,18 @@ jobs:
         run: |
           pyinstaller --onefile --noconsole ./main.py
 
-      - name: Upload artifact
+      - name: Upload artifact (for release or build job)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/main.exe
+          asset_name: liteview-windows.exe
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact (for build job only)
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v3
         with:
           name: liteview-windows
