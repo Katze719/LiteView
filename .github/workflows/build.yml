@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -32,20 +32,33 @@ jobs:
         env:
           DISPLAY: ":0"
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact (for release)
         if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
         with:
-          files: |
-            dist/main
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/main
+          asset_name: liteview-linux
+          asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact (for all builds)
+        if: "!startsWith(github.ref, 'refs/tags/') || always()"
+        uses: actions/upload-artifact@v4
+        with:
+          name: liteview-linux
+          path: dist/main
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+          overwrite: true
 
   build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -61,11 +74,24 @@ jobs:
         run: |
           pyinstaller --onefile --noconsole ./main.py
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact (for release)
         if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
         with:
-          files: |
-            dist/main.exe
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/main.exe
+          asset_name: liteview-windows.exe
+          asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact (for all builds)
+        if: "!startsWith(github.ref, 'refs/tags/') || always()"
+        uses: actions/upload-artifact@v4
+        with:
+          name: liteview-windows
+          path: dist/main.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+          overwrite: true
