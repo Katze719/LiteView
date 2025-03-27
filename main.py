@@ -13,9 +13,9 @@ def capture_screen_monitor_wayland(monitor_index):
         app = QtWidgets.QApplication(sys.argv)
     screens = app.screens()
     if not screens:
-        raise RuntimeError("Keine Bildschirme gefunden.")
+        raise RuntimeError("No screens found.")
     if monitor_index < 0 or monitor_index >= len(screens):
-        raise ValueError(f"Ungültiger Monitorindex: {monitor_index}. Es sind {len(screens)} Monitore verfügbar.")
+        raise ValueError(f"Invalid monitor index: {monitor_index}. {len(screens)} monitors are available.")
     screen = screens[monitor_index]
     geom = screen.geometry()
 
@@ -27,7 +27,7 @@ def capture_screen_monitor_wayland(monitor_index):
         subprocess.run(cmd, check=True)
         image = QtGui.QImage(filename)
         if image.isNull():
-            raise RuntimeError("Fehler beim Erfassen des Bildschirms: Das Bild ist leer.")
+            raise RuntimeError("Error capturing the screen: The image is empty.")
         return image
     finally:
         if os.path.exists(filename):
@@ -46,14 +46,14 @@ def capture_screen_monitor(monitor_index):
             app = QtWidgets.QApplication(sys.argv)
         screens = app.screens()
         if not screens:
-            raise RuntimeError("Keine Bildschirme gefunden.")
+            raise RuntimeError("No screens found.")
         if monitor_index < 0 or monitor_index >= len(screens):
-            raise ValueError(f"Ungültiger Monitorindex: {monitor_index}. Es sind {len(screens)} Monitore verfügbar.")
+            raise ValueError(f"Invalid monitor index: {monitor_index}. {len(screens)} monitors are available.")
         screen = screens[monitor_index]
         geom = screen.geometry()
         image = screen.grabWindow(0, geom.x(), geom.y(), geom.width(), geom.height()).toImage()
         if image.isNull():
-            raise RuntimeError("Fehler beim Erfassen des Bildschirms: Das Bild ist leer.")
+            raise RuntimeError("Error capturing the screen: The image is empty.")
         return image
 
 class ScreenViewer(QtWidgets.QWidget):
@@ -121,9 +121,9 @@ class ScreenViewer(QtWidgets.QWidget):
                 self.current_pixmap = pixmap  # Store the current pixmap
                 self.image_label.setPixmap(pixmap.scaled(self.image_label.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation))
             else:
-                print("Fehler: Pixmap ist leer.")
+                print("Error: Pixmap is empty.")
         except Exception as e:
-            print(f"Fehler beim Erfassen des Bildschirms: {e}")
+            print(f"Error capturing the screen: {e}")
 
 class ScreenPreview(QtWidgets.QWidget):
     """
@@ -158,7 +158,7 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     screens = app.screens()
     if not screens:
-        print("Keine Bildschirme gefunden. Bitte überprüfen Sie Ihre Konfiguration.")
+        print("No screens found. Please check your configuration.")
         sys.exit(1)
 
     # Show screen previews
@@ -169,7 +169,7 @@ def main():
     app.exec()
 
     if preview.selected_screen is None:
-        print("Kein Bildschirm ausgewählt. Beenden.")
+        print("No screen selected. Exiting.")
         sys.exit(1)
 
     monitor_index = preview.selected_screen
