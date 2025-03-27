@@ -44,10 +44,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifact (for all builds)
         if: "!startsWith(github.ref, 'refs/tags/') || always()"
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: liteview-linux
           path: dist/main
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+          overwrite: true
 
   build-windows:
     runs-on: windows-latest
@@ -81,7 +85,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifact (for all builds)
         if: "!startsWith(github.ref, 'refs/tags/') || always()"
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: liteview-windows
           path: dist/main.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+          overwrite: true
