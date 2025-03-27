@@ -44,7 +44,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifact (for all builds)
         if: "!startsWith(github.ref, 'refs/tags/') || always()"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: liteview-linux
           path: dist/main
@@ -81,7 +81,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifact (for all builds)
         if: "!startsWith(github.ref, 'refs/tags/') || always()"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: liteview-windows
           path: dist/main.exe
