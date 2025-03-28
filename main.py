@@ -61,6 +61,7 @@ class ScreenViewer(QtWidgets.QWidget):
         super().__init__()
         self.monitor_index = monitor_index
         self.setWindowTitle("Screen Viewer")
+        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
 
         # Get the screen's aspect ratio
         screen = QtWidgets.QApplication.instance().screens()[monitor_index]
@@ -157,6 +158,7 @@ class ScreenPreview(QtWidgets.QWidget):
     def __init__(self, screens):
         super().__init__()
         self.setWindowTitle("Select a Screen")
+        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
         self.layout = QtWidgets.QGridLayout(self)
         self.screens = screens
 
