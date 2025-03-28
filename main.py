@@ -37,6 +37,7 @@ def capture_screen_monitor(monitor_index):
     """
     Captures the entire screen of the specified monitor.
     Automatically detects whether to use Wayland (grim) or X11.
+    Includes the mouse cursor in the capture.
     """
     if os.getenv("WAYLAND_DISPLAY"):
         return capture_screen_monitor_wayland(monitor_index)
@@ -54,6 +55,14 @@ def capture_screen_monitor(monitor_index):
         image = screen.grabWindow(0, geom.x(), geom.y(), geom.width(), geom.height()).toImage()
         if image.isNull():
             raise RuntimeError("Error capturing the screen: The image is empty.")
+
+        # Overlay the mouse cursor onto the captured image
+        cursor = QtGui.QCursor()
+        cursor_pos = cursor.pos() - geom.topLeft()  # Adjust cursor position relative to the screen geometry
+        painter = QtGui.QPainter(image)
+        painter.drawPixmap(cursor_pos, cursor.pixmap())  # Draw the cursor on the image
+        painter.end()
+
         return image
 
 class ScreenViewer(QtWidgets.QWidget):
