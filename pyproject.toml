@@ -5,7 +5,7 @@ description = ""
 authors = [{ name = "Katze719", email = "pauldorn1234@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["pyqt6 (>=6.8.1,<7.0.0)"]
+dependencies = ["pyqt6 (>=6.8.1,<7.0.0)", "opencv-python (>=4.11.0.86,<5.0.0.0)", "mss (>=10.0.0,<11.0.0)", "numpy (>=2.2.4,<3.0.0)"]
 
 
 [build-system]
