@@ -117,10 +117,40 @@ class ScreenViewer(QtWidgets.QWidget):
     def update_screen(self):
         try:
             screen_image = capture_screen_monitor(self.monitor_index)
+
+            # Zeichne den roten Punkt für die Mausposition
+            painter = QtGui.QPainter(screen_image)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            painter.setPen(QtGui.QPen(QtGui.QColor('red'), 0))
+            painter.setBrush(QtGui.QColor('red'))
+
+            # Hole die globale Mausposition
+            global_mouse_pos = QtGui.QCursor.pos()
+
+            # Ermittle die Geometrie des aktuellen Bildschirms
+            screen_geom = QtWidgets.QApplication.instance().screens()[self.monitor_index].geometry()
+
+            # Umrechnung der globalen Mausposition in relative Bildschirmkoordinaten
+            mouse_x = global_mouse_pos.x() - screen_geom.x()
+            mouse_y = global_mouse_pos.y() - screen_geom.y()
+
+            # Optional: Nur zeichnen, wenn sich die Maus auf diesem Monitor befindet
+            if 0 <= mouse_x <= screen_geom.width() and 0 <= mouse_y <= screen_geom.height():
+                radius = 5  # Radius des roten Punkts
+                painter.drawEllipse(mouse_x - radius, mouse_y - radius, 2 * radius, 2 * radius)
+
+            painter.end()
+
             pixmap = QtGui.QPixmap.fromImage(screen_image)
             if not pixmap.isNull():
-                self.current_pixmap = pixmap  # Store the current pixmap
-                self.image_label.setPixmap(pixmap.scaled(self.image_label.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation))
+                self.current_pixmap = pixmap  # Speichere das aktuelle Pixmap für das Resizing
+                self.image_label.setPixmap(
+                    pixmap.scaled(
+                        self.image_label.size(),
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation
+                    )
+                )
             else:
                 print("Error: Pixmap is empty.")
         except Exception as e:
