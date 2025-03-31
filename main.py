@@ -152,12 +152,13 @@ class ScreenViewer(QtWidgets.QWidget):
 
 class ScreenPreview(QtWidgets.QWidget):
     """
-    A widget to display previews of all available screens and allow the user to select one.
+    Ein Widget, das Vorschaubilder aller verfügbaren Bildschirme anzeigt und
+    dem Benutzer ermöglicht, einen Monitor auszuwählen.
     """
     def __init__(self, screens):
         super().__init__()
         self.setWindowTitle("Select a Screen")
-        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(QtCore.Qt.WindowType.WindowStaysOnTopHint)
         self.layout = QtWidgets.QGridLayout(self)
         self.screens = screens
 
@@ -165,17 +166,35 @@ class ScreenPreview(QtWidgets.QWidget):
             geom = screen.geometry()
             preview_label = QtWidgets.QLabel(self)
             preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            preview_label.setText(f"Monitor {index}")
             preview_label.setStyleSheet("border: 1px solid black; padding: 5px;")
-            preview_label.setFixedSize(200, int(200 * geom.height() / geom.width()))  # Maintain aspect ratio
+            # Feste Größe für die Vorschau (Seitenverhältnis wird beibehalten)
+            preview_label.setFixedSize(int(geom.width() / (len(screens) * 1.1)), int((geom.width() / (len(screens) * 1.1) * geom.height() / geom.width())))
+
+            # Screenshot mittels capture_screen_monitor aufnehmen
+            try:
+                image = capture_screen_monitor(index)
+                pixmap = QtGui.QPixmap.fromImage(image)
+                if not pixmap.isNull():
+                    preview_pixmap = pixmap.scaled(
+                        preview_label.size(),
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation
+                    )
+                    preview_label.setPixmap(preview_pixmap)
+                else:
+                    preview_label.setText(f"Monitor {index}\nBild nicht verfügbar")
+            except Exception as e:
+                preview_label.setText(f"Monitor {index}\nFehler: {e}")
+
+            # Klick-Event zur Auswahl des entsprechenden Monitors
             preview_label.mousePressEvent = lambda event, idx=index: self.select_screen(idx)
-            self.layout.addWidget(preview_label, index // 3, index % 3)  # Arrange in a grid
+            self.layout.addWidget(preview_label, index // 3, index % 3)
 
         self.selected_screen = None
 
     def select_screen(self, index):
         """
-        Set the selected screen index and close the preview window.
+        Setzt den ausgewählten Bildschirm und schließt die Vorschau.
         """
         self.selected_screen = index
         self.close()
