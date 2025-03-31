@@ -36,7 +36,7 @@ def capture_screen_monitor_wayland(monitor_index):
 def capture_screen_monitor(monitor_index):
     """
     Captures the entire screen of the specified monitor.
-    Automatically detects whether to use Wayland (grim) or X11.
+    Automatically detects whether to use Wayland (grim) or X11/Windows.
     """
     if os.getenv("WAYLAND_DISPLAY"):
         return capture_screen_monitor_wayland(monitor_index)
@@ -50,8 +50,7 @@ def capture_screen_monitor(monitor_index):
         if monitor_index < 0 or monitor_index >= len(screens):
             raise ValueError(f"Invalid monitor index: {monitor_index}. {len(screens)} monitors are available.")
         screen = screens[monitor_index]
-        geom = screen.geometry()
-        image = screen.grabWindow(0, geom.x(), geom.y(), geom.width(), geom.height()).toImage()
+        image = screen.grabWindow(0).toImage()
         if image.isNull():
             raise RuntimeError("Error capturing the screen: The image is empty.")
         return image
