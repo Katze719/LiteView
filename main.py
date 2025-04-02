@@ -4,6 +4,21 @@ import subprocess
 import tempfile  # Import tempfile for creating temporary files
 from PyQt6 import QtWidgets, QtGui, QtCore
 
+
+class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
+    def __init__(self, icon, parent=None):
+        super().__init__(icon, parent)
+
+        # Kontextmenü
+        self.menu = QtWidgets.QMenu(parent)
+
+        # Aktion zum Beenden
+        exit_action = self.menu.addAction("Beenden")
+        exit_action.triggered.connect(QtWidgets.QApplication.quit)
+
+        # Menü setzen
+        self.setContextMenu(self.menu)
+
 def capture_screen_monitor_wayland(monitor_index):
     """
     Captures the entire screen of the specified monitor using grim (Wayland).
@@ -60,7 +75,7 @@ class ScreenViewer(QtWidgets.QWidget):
         super().__init__()
         self.monitor_index = monitor_index
         self.setWindowTitle("Screen Viewer")
-        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint | QtCore.Qt.WindowType.Tool)
 
         # Get the screen's aspect ratio
         screen = QtWidgets.QApplication.instance().screens()[monitor_index]
@@ -235,6 +250,11 @@ def main():
     if not screens:
         print("No screens found. Please check your configuration.")
         sys.exit(1)
+
+    icon = QtGui.QIcon("icon.jpg")
+    tray_icon = SystemTrayIcon(icon)
+    tray_icon.setToolTip("Mein Tray-Icon")
+    tray_icon.show()
 
     # Show screen previews
     preview = ScreenPreview(screens)
