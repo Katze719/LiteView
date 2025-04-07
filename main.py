@@ -2,7 +2,9 @@ import sys
 import os
 import subprocess
 import tempfile  # Für temporäre Dateien
+import pathlib
 from PyQt6 import QtWidgets, QtGui, QtCore
+
 
 # Globales Cursor-Konfigurationsobjekt
 class CursorSettings:
@@ -12,6 +14,7 @@ class CursorSettings:
         self.size = 5
         self.thickness = 0  # 0 = kosmetische Linie
         self.color = QtGui.QColor("red")
+
 
 cursor_settings = CursorSettings()
 
@@ -27,7 +30,9 @@ def capture_screen_monitor_wayland(monitor_index):
     if not screens:
         raise RuntimeError("No screens found.")
     if monitor_index < 0 or monitor_index >= len(screens):
-        raise ValueError(f"Invalid monitor index: {monitor_index}. {len(screens)} monitors available.")
+        raise ValueError(
+            f"Invalid monitor index: {monitor_index}. {len(screens)} monitors available."
+        )
     screen = screens[monitor_index]
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
         filename = tmp_file.name
@@ -58,7 +63,9 @@ def capture_screen_monitor(monitor_index):
         if not screens:
             raise RuntimeError("No screens found.")
         if monitor_index < 0 or monitor_index >= len(screens):
-            raise ValueError(f"Invalid monitor index: {monitor_index}. {len(screens)} monitors available.")
+            raise ValueError(
+                f"Invalid monitor index: {monitor_index}. {len(screens)} monitors available."
+            )
         screen = screens[monitor_index]
         image = screen.grabWindow(0).toImage()
         if image.isNull():
@@ -72,9 +79,9 @@ class ScreenViewer(QtWidgets.QWidget):
         self.monitor_index = monitor_index
         self.setWindowTitle("Screen Viewer")
         self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint |
-            QtCore.Qt.WindowType.WindowStaysOnTopHint |
-            QtCore.Qt.WindowType.Tool
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool
         )
 
         # Bildschirmgeometrie und Seitenverhältnis
@@ -93,7 +100,7 @@ class ScreenViewer(QtWidgets.QWidget):
         self.image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.image_label.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding
+            QtWidgets.QSizePolicy.Policy.Expanding,
         )
         self.image_label.setGeometry(self.rect())
         self.setContentsMargins(0, 0, 0, 0)
@@ -121,7 +128,7 @@ class ScreenViewer(QtWidgets.QWidget):
                 self.current_pixmap.scaled(
                     self.image_label.size(),
                     QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                    QtCore.Qt.TransformationMode.SmoothTransformation
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
                 )
             )
         super().resizeEvent(event)
@@ -137,20 +144,37 @@ class ScreenViewer(QtWidgets.QWidget):
                 painter.setPen(pen)
                 painter.setBrush(cursor_settings.color)
                 global_mouse_pos = QtGui.QCursor.pos()
-                screen_geom = QtWidgets.QApplication.instance().screens()[self.monitor_index].geometry()
+                screen_geom = (
+                    QtWidgets.QApplication.instance()
+                    .screens()[self.monitor_index]
+                    .geometry()
+                )
                 mouse_x = global_mouse_pos.x() - screen_geom.x()
                 mouse_y = global_mouse_pos.y() - screen_geom.y()
-                if 0 <= mouse_x <= screen_geom.width() and 0 <= mouse_y <= screen_geom.height():
+                if (
+                    0 <= mouse_x <= screen_geom.width()
+                    and 0 <= mouse_y <= screen_geom.height()
+                ):
                     if cursor_settings.style == "circle":
-                        painter.drawEllipse(mouse_x - cursor_settings.size,
-                                            mouse_y - cursor_settings.size,
-                                            2 * cursor_settings.size,
-                                            2 * cursor_settings.size)
+                        painter.drawEllipse(
+                            mouse_x - cursor_settings.size,
+                            mouse_y - cursor_settings.size,
+                            2 * cursor_settings.size,
+                            2 * cursor_settings.size,
+                        )
                     elif cursor_settings.style == "cross":
-                        painter.drawLine(mouse_x - cursor_settings.size, mouse_y,
-                                         mouse_x + cursor_settings.size, mouse_y)
-                        painter.drawLine(mouse_x, mouse_y - cursor_settings.size,
-                                         mouse_x, mouse_y + cursor_settings.size)
+                        painter.drawLine(
+                            mouse_x - cursor_settings.size,
+                            mouse_y,
+                            mouse_x + cursor_settings.size,
+                            mouse_y,
+                        )
+                        painter.drawLine(
+                            mouse_x,
+                            mouse_y - cursor_settings.size,
+                            mouse_x,
+                            mouse_y + cursor_settings.size,
+                        )
             painter.end()
             pixmap = QtGui.QPixmap.fromImage(screen_image)
             if not pixmap.isNull():
@@ -159,7 +183,7 @@ class ScreenViewer(QtWidgets.QWidget):
                     pixmap.scaled(
                         self.image_label.size(),
                         QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                        QtCore.Qt.TransformationMode.SmoothTransformation
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
                     )
                 )
             else:
@@ -169,11 +193,16 @@ class ScreenViewer(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self.drag_position = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self.drag_position is not None:
+        if (
+            event.buttons() == QtCore.Qt.MouseButton.LeftButton
+            and self.drag_position is not None
+        ):
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
@@ -193,6 +222,7 @@ class ScreenPreview(QtWidgets.QDialog):
     Ein Dialog, der Vorschaubilder aller verfügbaren Bildschirme anzeigt und
     dem Benutzer die Auswahl eines Monitors ermöglicht.
     """
+
     def __init__(self, screens):
         super().__init__()
         self.setWindowTitle("Bildschirm auswählen")
@@ -208,7 +238,9 @@ class ScreenPreview(QtWidgets.QDialog):
             preview_label.setStyleSheet("border: 1px solid black; padding: 5px;")
             preview_label.setFixedSize(
                 int(geom.width() / (len(screens) * 1.1)),
-                int((geom.width() / (len(screens) * 1.1)) * geom.height() / geom.width())
+                int(
+                    (geom.width() / (len(screens) * 1.1)) * geom.height() / geom.width()
+                ),
             )
             try:
                 image = capture_screen_monitor(index)
@@ -217,7 +249,7 @@ class ScreenPreview(QtWidgets.QDialog):
                     preview_pixmap = pixmap.scaled(
                         preview_label.size(),
                         QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                        QtCore.Qt.TransformationMode.SmoothTransformation
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
                     )
                     preview_label.setPixmap(preview_pixmap)
                 else:
@@ -225,7 +257,9 @@ class ScreenPreview(QtWidgets.QDialog):
             except Exception as e:
                 preview_label.setText(f"Monitor {index}\nFehler: {e}")
             # Beim Klick den Bildschirm auswählen
-            preview_label.mousePressEvent = lambda event, idx=index: self.select_screen(idx)
+            preview_label.mousePressEvent = lambda event, idx=index: self.select_screen(
+                idx
+            )
             self.layout.addWidget(preview_label, index // 3, index % 3)
 
     def select_screen(self, index):
@@ -237,7 +271,9 @@ class CursorSettingsDialog(QtWidgets.QDialog):
     def __init__(self, cursor_settings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cursor Einstellungen")
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
         self.cursor_settings = cursor_settings
 
         layout = QtWidgets.QFormLayout(self)
@@ -287,14 +323,18 @@ class CursorSettingsDialog(QtWidgets.QDialog):
         layout.addRow("Voreinstellungen", self.predefined_combo)
 
         # OK / Abbrechen Buttons
-        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
-                                                QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addRow(button_box)
 
     def select_color(self):
-        color = QtWidgets.QColorDialog.getColor(initial=self.cursor_settings.color, parent=self, title="Wähle Cursor-Farbe")
+        color = QtWidgets.QColorDialog.getColor(
+            initial=self.cursor_settings.color, parent=self, title="Wähle Cursor-Farbe"
+        )
         if color.isValid():
             self.cursor_settings.color = color
             self.update_color_label()
@@ -408,7 +448,13 @@ def main():
         print("No screens found. Please check your configuration.")
         sys.exit(1)
 
-    icon = QtGui.QIcon("icon.jpg")
+    icon_path = (pathlib.Path(__file__).parent / "icon.jpg").resolve().as_posix()
+
+    icon = QtGui.QIcon(icon_path)
+    if icon.isNull():
+        print("Icon nicht gefunden! Programm wird beendet.")
+        sys.exit(1)
+
     tray_icon = SystemTrayIcon(icon)
     tray_icon.setToolTip("LiteView")
     tray_icon.show()
