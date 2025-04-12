@@ -396,6 +396,56 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
         self.setContextMenu(self.menu)
         self.selected_screen = None
         self.viewer = None
+        
+        # Quick Settings Menu für Linksklick
+        self.quick_menu = None
+        self.activated.connect(self.on_tray_activated)
+
+    def on_tray_activated(self, reason):
+        # Nur bei Linksklick das Quick-Menu anzeigen
+        if reason == QtWidgets.QSystemTrayIcon.ActivationReason.Trigger:
+            self.show_quick_settings()
+    
+    def show_quick_settings(self):
+        # Quick Settings Menu erstellen
+        self.quick_menu = QtWidgets.QMenu()
+        
+        # Screens als Buttons hinzufügen
+        screens = QtWidgets.QApplication.instance().screens()
+        for i, screen in enumerate(screens):
+            action = self.quick_menu.addAction(f"Bildschirm {i}")
+            action.triggered.connect(lambda checked, idx=i: self.quick_select_screen(idx))
+        
+        self.quick_menu.addSeparator()
+        
+        # Cursor ein/aus Toggle
+        cursor_toggle = self.quick_menu.addAction("Cursor: " + ("Ein" if cursor_settings.enabled else "Aus"))
+        cursor_toggle.triggered.connect(self.toggle_cursor)
+        
+        # Ein/Aus Buttons
+        if self.viewer and self.viewer.isVisible():
+            stop_action = self.quick_menu.addAction("Mirror ausschalten")
+            stop_action.triggered.connect(self.on_stop_program)
+        else:
+            start_action = self.quick_menu.addAction("Mirror einschalten")
+            start_action.triggered.connect(self.on_start_program)
+        
+        # Menu an der Position des Mauszeigers anzeigen
+        self.quick_menu.popup(QtGui.QCursor.pos())
+    
+    def quick_select_screen(self, index):
+        self.selected_screen = index
+        # Mirror gleich starten/aktualisieren
+        if self.viewer is not None:
+            self.viewer.close()
+            self.viewer.deleteLater()
+            self.viewer = None
+        self.viewer = ScreenViewer(self.selected_screen)
+        self.viewer.show()
+        self.viewer.activateWindow()
+    
+    def toggle_cursor(self):
+        cursor_settings.enabled = not cursor_settings.enabled
 
     def on_select_screen(self):
         screens = QtWidgets.QApplication.instance().screens()
