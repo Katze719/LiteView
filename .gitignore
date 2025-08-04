@@ -34,3 +34,8 @@ build/
 # Temporary files
 *.tmp
 *.temp
+
+
+# Added by cargo
+
+/target
