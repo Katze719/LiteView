@@ -12,9 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "liteview",
-        "width": 800,
-        "height": 600
+        "title": "LiteView",
+        "width": 480,
+        "height": 360,
+        "minWidth": 320,
+        "minHeight": 240,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": false
       }
     ],
     "security": {
