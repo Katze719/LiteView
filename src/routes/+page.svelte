@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
 
   let videoEl = $state<HTMLVideoElement | null>(null);
   let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -84,7 +85,19 @@
   }
 
   onMount(() => {
+    let unlistenStart: (() => void) | null = null;
+    let unlistenStop: (() => void) | null = null;
+    if (typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined") {
+      listen("capture-start", () => startCapture()).then((fn) => {
+        unlistenStart = fn;
+      });
+      listen("capture-stop", () => stopCapture()).then((fn) => {
+        unlistenStop = fn;
+      });
+    }
     return () => {
+      unlistenStart?.();
+      unlistenStop?.();
       stopCapture();
     };
   });

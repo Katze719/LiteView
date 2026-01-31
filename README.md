@@ -25,6 +25,9 @@ APIs.
 - **Picture-in-picture**: “Select screen/window” opens the system picker; the
   chosen display is shown in the small window.
 - **Draggable overlay**: Drag by the title bar; window stays on top.
+- **System tray**: Tray icon with menu: Select screen / Start capture (opens
+  picker), Stop capture, Show LiteView, Settings, Quit. Left-click opens the
+  menu.
 - **Click-through** (optional, not yet): Could be added later by mapping canvas
   coordinates to the captured surface.
 
