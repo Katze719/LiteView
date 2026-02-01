@@ -8,8 +8,11 @@
     "opener:default",
     "core:window:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-hide",
     "core:event:allow-listen",
     "allow-get-capture-targets",
+    "allow-get-capture-settings",
+    "allow-set-capture-settings",
     "allow-start-capture",
     "allow-stop-capture"
   ]

@@ -1,10 +1,10 @@
 mod preview;
 
 use preview::{FrameData, PreviewState};
-use scap::capturer::{Capturer, Options};
+use scap::capturer::{Capturer, Options, Resolution as ScapResolution};
 use scap::frame::{Frame, FrameType};
 use scap::{get_all_targets, has_permission, is_supported, request_permission, Target};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,7 +14,35 @@ use tauri::{
 };
 use tauri::{Emitter, Manager, State};
 
-const CAPTURE_FPS: u32 = 60;
+const DEFAULT_CAPTURE_FPS: u32 = 60;
+const DEFAULT_RESOLUTION: &str = "captured";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CaptureSettings {
+    fps: u32,
+    resolution: String,
+}
+
+impl Default for CaptureSettings {
+    fn default() -> Self {
+        Self {
+            fps: DEFAULT_CAPTURE_FPS,
+            resolution: DEFAULT_RESOLUTION.to_string(),
+        }
+    }
+}
+
+fn resolution_from_str(s: &str) -> ScapResolution {
+    match s {
+        "480p" => ScapResolution::_480p,
+        "720p" => ScapResolution::_720p,
+        "1080p" => ScapResolution::_1080p,
+        "1440p" => ScapResolution::_1440p,
+        "2160p" => ScapResolution::_2160p,
+        "4320p" => ScapResolution::_4320p,
+        _ => ScapResolution::Captured,
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 struct TargetDto {
@@ -27,6 +55,7 @@ struct TargetDto {
 struct CaptureState {
     stop_requested: Arc<AtomicBool>,
     preview_state: Arc<Mutex<Option<Arc<PreviewState>>>>,
+    settings: Arc<Mutex<CaptureSettings>>,
 }
 
 impl Default for CaptureState {
@@ -34,8 +63,43 @@ impl Default for CaptureState {
         Self {
             stop_requested: Arc::new(AtomicBool::new(false)),
             preview_state: Arc::new(Mutex::new(None)),
+            settings: Arc::new(Mutex::new(CaptureSettings::default())),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CaptureSettingsDto {
+    fps: u32,
+    resolution: String,
+}
+
+#[tauri::command]
+fn get_capture_settings(state: State<CaptureState>) -> CaptureSettingsDto {
+    let s = state.settings.lock().unwrap();
+    CaptureSettingsDto {
+        fps: s.fps,
+        resolution: s.resolution.clone(),
+    }
+}
+
+#[tauri::command]
+fn set_capture_settings(
+    fps: u32,
+    resolution: String,
+    state: State<CaptureState>,
+) -> Result<(), String> {
+    let fps = fps.clamp(1, 120);
+    let resolution = resolution.to_lowercase();
+    let valid = ["captured", "480p", "720p", "1080p", "1440p", "2160p", "4320p"];
+    if !valid.contains(&resolution.as_str()) {
+        return Err(format!("Invalid resolution: {}", resolution));
+    }
+    *state.settings.lock().unwrap() = CaptureSettings {
+        fps,
+        resolution: resolution.clone(),
+    };
+    Ok(())
 }
 
 #[tauri::command]
@@ -168,16 +232,17 @@ fn start_capture(
     }
     state.stop_requested.store(false, Ordering::Relaxed);
 
+    let settings = state.settings.lock().unwrap().clone();
     let target = target_index.and_then(|idx| get_all_targets().into_iter().nth(idx));
 
     let options = Options {
-        fps: CAPTURE_FPS,
+        fps: settings.fps,
         show_cursor: true,
         show_highlight: false,
         target,
         crop_area: None,
         output_type: FrameType::BGRAFrame,
-        output_resolution: scap::capturer::Resolution::Captured,
+        output_resolution: resolution_from_str(&settings.resolution),
         excluded_targets: None,
         ..Default::default()
     };
@@ -193,9 +258,6 @@ fn start_capture(
         .lock()
         .unwrap()
         .replace(preview_state.clone());
-
-    let preview_state_for_window = preview_state.clone();
-    thread::spawn(move || preview::run_preview_window(preview_state_for_window));
 
     let stop_requested_clone = state.stop_requested.clone();
 
@@ -253,10 +315,15 @@ pub fn run() {
         .manage(CaptureState::default())
         .invoke_handler(tauri::generate_handler![
             get_capture_targets,
+            get_capture_settings,
+            set_capture_settings,
             start_capture,
             stop_capture,
         ])
         .setup(|app| {
+            let slot = app.state::<CaptureState>().preview_state.clone();
+            thread::spawn(move || preview::run_preview_window(slot));
+
             let start_capture_i = MenuItem::with_id(
                 app,
                 "start_capture",

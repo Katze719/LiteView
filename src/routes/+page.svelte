@@ -2,25 +2,28 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
-  interface CaptureTarget {
-    index: number;
-    id: number;
-    name: string;
-    kind: string;
-  }
-
-  const LOAD_TARGETS_TIMEOUT_MS = 15_000;
   const isTauri =
     typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
     "undefined";
 
+  const FPS_OPTIONS = [15, 30, 60, 90, 120] as const;
+  const RESOLUTION_OPTIONS = [
+    { value: "captured", label: "Native (captured)" },
+    { value: "480p", label: "480p" },
+    { value: "720p", label: "720p" },
+    { value: "1080p", label: "1080p" },
+    { value: "1440p", label: "1440p" },
+    { value: "2160p", label: "2160p (4K)" },
+    { value: "4320p", label: "4320p (8K)" },
+  ] as const;
+
   let error = $state<string>("");
   let capturing = $state(false);
-  let captureTargets = $state<CaptureTarget[]>([]);
-  let targetsLoaded = $state(false);
-  let targetsError = $state<string>("");
-  let selectedTargetIndex = $state<number>(0);
+  let settingsFps = $state(60);
+  let settingsResolution = $state("captured");
+  let settingsSaved = $state(false);
   let unlistenError: (() => void) | null = null;
 
   function getInvokeError(e: unknown): string {
@@ -44,12 +47,11 @@
     error = "";
   }
 
-  async function startCapture() {
+  async function startCaptureFromTray() {
     error = "";
     stopCapture();
-    const targetIndex = captureTargets.length > 0 ? Number(selectedTargetIndex) : null;
     try {
-      await invoke("start_capture", { targetIndex });
+      await invoke("start_capture", { targetIndex: null });
       capturing = true;
       unlistenError = await listen("capture-error", (event) => {
         error = String(event.payload);
@@ -59,119 +61,114 @@
     }
   }
 
-  function loadCaptureTargets() {
-    targetsLoaded = false;
-    targetsError = "";
-    const loadPromise = invoke<CaptureTarget[]>("get_capture_targets")
-      .then((targets) => {
-        captureTargets = targets ?? [];
-        targetsError = "";
-        targetsLoaded = true;
-        if (targets?.length) selectedTargetIndex = 0;
-      })
-      .catch((e) => {
-        targetsError = getInvokeError(e);
-        targetsLoaded = true;
+  async function loadSettings() {
+    if (!isTauri) return;
+    try {
+      const s = await invoke<{ fps: number; resolution: string }>("get_capture_settings");
+      settingsFps = s.fps;
+      settingsResolution = s.resolution ?? "captured";
+    } catch {
+      // keep defaults
+    }
+  }
+
+  async function saveSettings() {
+    if (!isTauri) return;
+    error = "";
+    try {
+      await invoke("set_capture_settings", {
+        fps: Number(settingsFps),
+        resolution: settingsResolution,
       });
-    const timeoutPromise = new Promise<void>((r) =>
-      setTimeout(r, LOAD_TARGETS_TIMEOUT_MS)
-    );
-    Promise.race([loadPromise, timeoutPromise]).then(() => {
-      if (!targetsLoaded) {
-        targetsLoaded = true;
-        targetsError =
-          "Loading timed out. Check that the system screen-sharing dialog appeared, or try again.";
-      }
-    });
+      settingsSaved = true;
+      setTimeout(() => (settingsSaved = false), 1500);
+    } catch (e) {
+      error = getInvokeError(e);
+    }
   }
 
   onMount(() => {
     let unlistenStart: (() => void) | null = null;
     let unlistenStop: (() => void) | null = null;
+    let unlistenClose: (() => void) | null = null;
 
     if (isTauri) {
-      loadCaptureTargets();
-      listen("capture-start", startCapture).then((fn) => (unlistenStart = fn));
+      loadSettings();
+      listen("capture-start", startCaptureFromTray).then((fn) => (unlistenStart = fn));
       listen("capture-stop", stopCapture).then((fn) => (unlistenStop = fn));
+
+      getCurrentWindow()
+        .onCloseRequested(async (event) => {
+          event.preventDefault();
+          await getCurrentWindow().hide();
+        })
+        .then((fn) => (unlistenClose = fn));
     }
 
     return () => {
       unlistenStart?.();
       unlistenStop?.();
+      unlistenClose?.();
       stopCapture();
     };
   });
 </script>
 
 <svelte:head>
-  <title>LiteView</title>
+  <title>LiteView Settings</title>
 </svelte:head>
 
-<div class="pip">
+<div class="settings">
   <header class="header" data-tauri-drag-region>
-    <span class="title">LiteView</span>
-    {#if capturing}
-      <button type="button" class="btn btn-stop" onclick={stopCapture}>Stop</button>
-    {:else if captureTargets.length > 0}
-      <select
-        class="display-select"
-        bind:value={selectedTargetIndex}
-        aria-label="Select screen or window"
-      >
-        {#each captureTargets as t}
-          <option value={t.index}>{t.name} ({t.kind})</option>
-        {/each}
-      </select>
-      <button type="button" class="btn btn-start" onclick={startCapture}>
-        Start capture
-      </button>
-    {:else if isTauri && targetsLoaded && !targetsError}
-      <button type="button" class="btn btn-start" onclick={startCapture}>
-        Select screen / Start capture
-      </button>
-    {/if}
+    <span class="title">LiteView Settings</span>
   </header>
 
-  <main class="preview">
-    {#if capturing}
-      <p class="hint">
-        Preview runs in the separate "LiteView Preview" window (native, low latency).
-      </p>
-    {/if}
+  <main class="main">
     {#if error}
       <p class="error" role="alert">{error}</p>
     {/if}
-    {#if isTauri && targetsLoaded && captureTargets.length === 0 && targetsError && !capturing}
-      <p class="error" role="alert">{targetsError}</p>
-      <p class="hint">
-        Ensure screen capture permissions are granted.
-      </p>
-      <button type="button" class="btn btn-start retry-btn" onclick={loadCaptureTargets}>
-        Retry
+
+    <section class="section" aria-labelledby="capture-settings-heading">
+      <h2 id="capture-settings-heading" class="section-title">Capture settings</h2>
+      <p class="hint">Applied the next time you start capture from the tray.</p>
+
+      <div class="field">
+        <label for="fps">FPS</label>
+        <select id="fps" bind:value={settingsFps} class="select">
+          {#each FPS_OPTIONS as fps}
+            <option value={fps}>{fps}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="resolution">Resolution</label>
+        <select id="resolution" bind:value={settingsResolution} class="select">
+          {#each RESOLUTION_OPTIONS as opt}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </div>
+
+      <button type="button" class="btn btn-save" onclick={saveSettings}>
+        {settingsSaved ? "Saved" : "Save settings"}
       </button>
-    {:else if !capturing && !error}
+    </section>
+
+    <section class="section">
       <p class="hint">
-        {#if captureTargets.length > 0}
-          Select a screen above and click "Start capture".
-        {:else if isTauri && !targetsLoaded}
-          Loading capture targets…
-        {:else if isTauri && targetsLoaded && captureTargets.length === 0}
-          Click "Select screen / Start capture" above.
-        {:else}
-          Run as desktop app (pnpm tauri dev) for screen capture.
-        {/if}
+        Use the system tray to <strong>Start</strong> (PipeWire/screen selection) or <strong>Stop</strong> capture.
+        The preview appears in a separate window when capture is running.
       </p>
-      {#if isTauri && targetsLoaded && captureTargets.length === 0 && targetsError}
-        <button type="button" class="btn btn-start retry-btn" onclick={loadCaptureTargets}>
-          Retry
-        </button>
+      {#if capturing}
+        <p class="status">Capture is running.</p>
       {/if}
-    {/if}
+    </section>
   </main>
 </div>
 
 <style>
-  .pip {
+  .settings {
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -182,7 +179,6 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
     padding: 0.5rem 0.75rem;
     background: var(--header-bg);
     border-bottom: 1px solid var(--border);
@@ -194,9 +190,36 @@
     font-weight: 600;
   }
 
-  .display-select {
+  .main {
     flex: 1;
-    min-width: 0;
+    padding: 1rem 0.75rem;
+    overflow: auto;
+  }
+
+  .section {
+    margin-bottom: 1.5rem;
+  }
+
+  .section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem 0;
+  }
+
+  .field {
+    margin-top: 0.75rem;
+  }
+
+  .field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+
+  .select {
+    width: 100%;
+    max-width: 12rem;
     padding: 0.35rem 0.5rem;
     font-size: 0.8rem;
     border: 1px solid var(--border);
@@ -206,65 +229,40 @@
     cursor: pointer;
   }
 
-  .btn {
+  .btn-save {
+    margin-top: 0.75rem;
     padding: 0.35rem 0.75rem;
     font-size: 0.8rem;
     border-radius: 6px;
     border: 1px solid var(--border);
     cursor: pointer;
     font-family: inherit;
-  }
-
-  .btn-start {
     background: var(--accent);
     color: var(--accent-fg);
     border-color: var(--accent);
   }
 
-  .btn-start:hover {
+  .btn-save:hover {
     filter: brightness(1.1);
   }
 
-  .btn-stop {
-    background: var(--input-bg);
-    color: var(--fg);
-  }
-
-  .btn-stop:hover {
-    background: var(--hover);
-  }
-
-  .retry-btn {
-    margin-top: 0.75rem;
-  }
-
-  .preview {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--preview-bg);
-    overflow: hidden;
-  }
-
   .error {
-    position: absolute;
-    bottom: 1rem;
-    left: 1rem;
-    right: 1rem;
     color: var(--error);
     font-size: 0.875rem;
-    text-align: center;
-    margin: 0;
+    margin: 0 0 0.75rem 0;
   }
 
   .hint {
-    position: absolute;
     color: var(--muted);
     font-size: 0.875rem;
     margin: 0;
+    line-height: 1.5;
+  }
+
+  .status {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--accent);
   }
 
   :global(:root) {
@@ -272,13 +270,11 @@
     --fg: #e5e5e5;
     --header-bg: #252525;
     --border: #3a3a3a;
-    --input-bg: #2a2a2a;
     --preview-bg: #0d0d0d;
     --muted: #737373;
     --error: #f87171;
     --accent: #3b82f6;
-    --accent-fg: #fff;
-    --hover: #333;
+    --input-bg: #2a2a2a;
   }
 
   @media (prefers-color-scheme: light) {
@@ -287,13 +283,10 @@
       --fg: #171717;
       --header-bg: #e5e5e5;
       --border: #d4d4d4;
-      --input-bg: #fff;
-      --preview-bg: #262626;
       --muted: #737373;
       --error: #dc2626;
       --accent: #2563eb;
-      --accent-fg: #fff;
-      --hover: #e5e5e5;
+      --input-bg: #fff;
     }
   }
 </style>

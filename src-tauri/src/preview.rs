@@ -329,8 +329,11 @@ impl WgpuContext {
     }
 }
 
+/// Shared slot: current preview state (None when no capture). Preview thread reads this and never exits the event loop.
+pub type PreviewStateSlot = Arc<Mutex<Option<Arc<PreviewState>>>>;
+
 struct PreviewApp {
-    state: Arc<PreviewState>,
+    slot: PreviewStateSlot,
     window: Option<Arc<Window>>,
     wgpu_context: Option<WgpuContext>,
     frame_count: u32,
@@ -338,20 +341,22 @@ struct PreviewApp {
 }
 
 impl ApplicationHandler for PreviewApp {
-    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        // Window is only created when the first frame arrives
-    }
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
     fn window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         _window_id: WindowId,
         event: WindowEvent,
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                self.state.running.store(false, Ordering::Relaxed);
-                event_loop.exit();
+                if let Some(state) = self.slot.lock().unwrap().as_ref() {
+                    state.running.store(false, Ordering::Relaxed);
+                    state.frame_available.notify_one();
+                }
+                self.window = None;
+                self.wgpu_context = None;
             }
             WindowEvent::Resized(size) => {
                 if let Some(ref mut ctx) = self.wgpu_context {
@@ -359,12 +364,15 @@ impl ApplicationHandler for PreviewApp {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let state = match self.slot.lock().unwrap().clone() {
+                    Some(s) => s,
+                    None => return,
+                };
                 if let (Some(ref window), Some(ref mut ctx)) =
                     (&self.window, &mut self.wgpu_context)
                 {
                     let mut has_new_frame = false;
-
-                    if let Ok(mut guard) = self.state.frame.try_lock() {
+                    if let Ok(mut guard) = state.frame.try_lock() {
                         if let Some(frame_data) = guard.take() {
                             ctx.update_texture(
                                 frame_data.width,
@@ -374,7 +382,6 @@ impl ApplicationHandler for PreviewApp {
                             has_new_frame = true;
                         }
                     }
-
                     if let Ok(()) = ctx.render() {
                         if has_new_frame {
                             self.frame_count += 1;
@@ -397,22 +404,26 @@ impl ApplicationHandler for PreviewApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if !self.state.running.load(Ordering::Relaxed) {
-            if let Some(ref window) = self.window {
-                window.set_visible(false);
-            }
-            self.window = None;
-            self.wgpu_context = None;
-            event_loop.exit();
-            return;
-        }
-
         let wait_duration = Duration::from_millis(16);
         event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + wait_duration));
 
-        // Create window when first frame is available
+        let state = match self.slot.lock().unwrap().clone() {
+            Some(s) => s,
+            None => {
+                self.window = None;
+                self.wgpu_context = None;
+                return;
+            }
+        };
+
+        if !state.running.load(Ordering::Relaxed) {
+            self.window = None;
+            self.wgpu_context = None;
+            return;
+        }
+
         if self.window.is_none() {
-            if let Ok(mut guard) = self.state.frame.try_lock() {
+            if let Ok(mut guard) = state.frame.try_lock() {
                 if let Some(frame_data) = guard.take() {
                     let attrs = WindowAttributes::default()
                         .with_title("LiteView Preview")
@@ -434,8 +445,7 @@ impl ApplicationHandler for PreviewApp {
                 }
             }
         } else {
-            // Request redraw only when a new frame is available
-            if let Ok(guard) = self.state.frame.try_lock() {
+            if let Ok(guard) = state.frame.try_lock() {
                 if guard.is_some() {
                     if let Some(ref window) = self.window {
                         window.request_redraw();
@@ -446,7 +456,8 @@ impl ApplicationHandler for PreviewApp {
     }
 }
 
-pub fn run_preview_window(state: Arc<PreviewState>) {
+/// Runs the preview event loop forever. Reads current preview state from `slot`; never exits (so the event loop can be created once per process).
+pub fn run_preview_window(slot: PreviewStateSlot) {
     let mut event_loop_builder = winit::event_loop::EventLoop::builder();
 
     #[cfg(target_os = "linux")]
@@ -459,10 +470,16 @@ pub fn run_preview_window(state: Arc<PreviewState>) {
         }
     }
 
-    let event_loop = event_loop_builder.build().unwrap();
+    let event_loop = match event_loop_builder.build() {
+        Ok(el) => el,
+        Err(e) => {
+            eprintln!("Preview: cannot create event loop: {e}. (Only one event loop per process is allowed on this platform.)");
+            return;
+        }
+    };
 
     let mut app = PreviewApp {
-        state,
+        slot,
         window: None,
         wgpu_context: None,
         frame_count: 0,
