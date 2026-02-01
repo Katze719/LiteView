@@ -10,6 +10,11 @@
     kind: string;
   }
 
+  const LOAD_TARGETS_TIMEOUT_MS = 15_000;
+  const isTauri =
+    typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+    "undefined";
+
   let error = $state<string>("");
   let capturing = $state(false);
   let scapTargets = $state<ScapTarget[]>([]);
@@ -18,34 +23,31 @@
   let selectedScapIndex = $state<number>(0);
   let unlistenScapError: (() => void) | null = null;
 
-  const isTauri =
-    typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
-
-  /** Extract error message from Tauri invoke rejection (string, Error, or { message }). */
   function getInvokeError(e: unknown): string {
     if (typeof e === "string") return e;
     if (e instanceof Error) return e.message;
-    if (e != null && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string")
+    if (
+      e != null &&
+      typeof e === "object" &&
+      "message" in e &&
+      typeof (e as { message: unknown }).message === "string"
+    )
       return (e as { message: string }).message;
     return String(e);
   }
 
   function stopCapture() {
-    if (isTauri) {
-      invoke("stop_scap_capture").catch(() => {});
-    }
+    if (isTauri) invoke("stop_scap_capture").catch(() => {});
     unlistenScapError?.();
     unlistenScapError = null;
     capturing = false;
     error = "";
   }
 
-  /** Start capture. Preview opens in native window (tao + wgpu). */
-  async function startCaptureWithScap() {
+  async function startCapture() {
     error = "";
     stopCapture();
-    const targetIndex =
-      scapTargets.length > 0 ? Number(selectedScapIndex) : null;
+    const targetIndex = scapTargets.length > 0 ? Number(selectedScapIndex) : null;
     try {
       await invoke("start_scap_capture", { targetIndex });
       capturing = true;
@@ -57,13 +59,6 @@
     }
   }
 
-  /** Called e.g. from tray "capture-start"; only starts scap capture. */
-  async function startCapture() {
-    await startCaptureWithScap();
-  }
-
-  const LOAD_TARGETS_TIMEOUT_MS = 15_000;
-
   function loadScapTargets() {
     scapTargetsLoaded = false;
     scapError = "";
@@ -72,14 +67,14 @@
         scapTargets = targets ?? [];
         scapError = "";
         scapTargetsLoaded = true;
-        if (scapTargets.length > 0) selectedScapIndex = 0;
+        if (targets?.length) selectedScapIndex = 0;
       })
       .catch((e) => {
         scapError = getInvokeError(e);
         scapTargetsLoaded = true;
       });
-    const timeoutPromise = new Promise<void>((resolve) =>
-      setTimeout(() => resolve(), LOAD_TARGETS_TIMEOUT_MS)
+    const timeoutPromise = new Promise<void>((r) =>
+      setTimeout(r, LOAD_TARGETS_TIMEOUT_MS)
     );
     Promise.race([loadPromise, timeoutPromise]).then(() => {
       if (!scapTargetsLoaded) {
@@ -91,17 +86,15 @@
   }
 
   onMount(() => {
-    if (isTauri) {
-      loadScapTargets();
-      listen("capture-start", () => startCapture()).then((fn) => {
-        unlistenStart = fn;
-      });
-      listen("capture-stop", () => stopCapture()).then((fn) => {
-        unlistenStop = fn;
-      });
-    }
     let unlistenStart: (() => void) | null = null;
     let unlistenStop: (() => void) | null = null;
+
+    if (isTauri) {
+      loadScapTargets();
+      listen("capture-start", startCapture).then((fn) => (unlistenStart = fn));
+      listen("capture-stop", stopCapture).then((fn) => (unlistenStop = fn));
+    }
+
     return () => {
       unlistenStart?.();
       unlistenStop?.();
@@ -119,31 +112,31 @@
     <span class="title">LiteView</span>
     {#if capturing}
       <button type="button" class="btn btn-stop" onclick={stopCapture}>Stop</button>
-    {:else}
-      {#if scapTargets.length > 0}
-        <select
-          class="display-select"
-          bind:value={selectedScapIndex}
-          aria-label="Select screen or window"
-        >
-          {#each scapTargets as t}
-            <option value={t.index}>{t.title} ({t.kind})</option>
-          {/each}
-        </select>
-        <button type="button" class="btn btn-start" onclick={startCaptureWithScap}>
-          Start capture
-        </button>
-      {:else if isTauri && scapTargetsLoaded && !scapError}
-        <button type="button" class="btn btn-start" onclick={startCaptureWithScap}>
-          Select screen / Start capture
-        </button>
-      {/if}
+    {:else if scapTargets.length > 0}
+      <select
+        class="display-select"
+        bind:value={selectedScapIndex}
+        aria-label="Select screen or window"
+      >
+        {#each scapTargets as t}
+          <option value={t.index}>{t.title} ({t.kind})</option>
+        {/each}
+      </select>
+      <button type="button" class="btn btn-start" onclick={startCapture}>
+        Start capture
+      </button>
+    {:else if isTauri && scapTargetsLoaded && !scapError}
+      <button type="button" class="btn btn-start" onclick={startCapture}>
+        Select screen / Start capture
+      </button>
     {/if}
   </header>
 
   <main class="preview">
     {#if capturing}
-      <p class="hint">Preview runs in the separate “LiteView Preview” window (native, low latency).</p>
+      <p class="hint">
+        Preview runs in the separate "LiteView Preview" window (native, low latency).
+      </p>
     {/if}
     {#if error}
       <p class="error" role="alert">{error}</p>
@@ -151,9 +144,8 @@
     {#if isTauri && scapTargetsLoaded && scapTargets.length === 0 && scapError && !capturing}
       <p class="error" role="alert">{scapError}</p>
       <p class="hint">
-        Don't run with sudo. On Linux Wayland: ensure PipeWire and
-        xdg-desktop-portal are installed; grant screen-sharing when the system
-        prompts you.
+        Don't run with sudo. On Linux Wayland: ensure PipeWire and xdg-desktop-portal
+        are installed; grant screen-sharing when the system prompts you.
       </p>
       <button type="button" class="btn btn-start retry-btn" onclick={loadScapTargets}>
         Retry
@@ -161,11 +153,12 @@
     {:else if !capturing && !error}
       <p class="hint">
         {#if scapTargets.length > 0}
-          Select a screen/window above and click “Start capture”.
+          Select a screen/window above and click "Start capture".
         {:else if isTauri && !scapTargetsLoaded}
           Loading capture targets…
         {:else if isTauri && scapTargetsLoaded && scapTargets.length === 0}
-          On Linux, click “Select screen / Start capture” above. A system dialog will let you choose which screen or window to capture.
+          On Linux, click "Select screen / Start capture" above. A system dialog will
+          let you choose which screen or window to capture.
         {:else}
           Run as desktop app (pnpm tauri dev) for screen capture.
         {/if}
