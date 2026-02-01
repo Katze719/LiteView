@@ -339,7 +339,7 @@ struct PreviewApp {
 
 impl ApplicationHandler for PreviewApp {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
-        // Window wird erst erstellt, wenn der erste Frame da ist
+        // Window is only created when the first frame arrives
     }
 
     fn window_event(
@@ -410,7 +410,7 @@ impl ApplicationHandler for PreviewApp {
         let wait_duration = Duration::from_millis(16);
         event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + wait_duration));
 
-        // Erstelle Fenster beim ersten Frame
+        // Create window when first frame is available
         if self.window.is_none() {
             if let Ok(mut guard) = self.state.frame.try_lock() {
                 if let Some(frame_data) = guard.take() {
@@ -434,7 +434,7 @@ impl ApplicationHandler for PreviewApp {
                 }
             }
         } else {
-            // Nur Redraw anfordern wenn neuer Frame da ist
+            // Request redraw only when a new frame is available
             if let Ok(guard) = self.state.frame.try_lock() {
                 if guard.is_some() {
                     if let Some(ref window) = self.window {
