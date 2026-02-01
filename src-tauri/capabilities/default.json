@@ -9,8 +9,8 @@
     "core:window:default",
     "core:window:allow-start-dragging",
     "core:event:allow-listen",
-    "allow-get-scap-targets",
-    "allow-start-scap-capture",
-    "allow-stop-scap-capture"
+    "allow-get-capture-targets",
+    "allow-start-capture",
+    "allow-stop-capture"
   ]
 }

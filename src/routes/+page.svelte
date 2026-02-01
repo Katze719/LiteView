@@ -3,10 +3,10 @@
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
 
-  interface ScapTarget {
+  interface CaptureTarget {
     index: number;
     id: number;
-    title: string;
+    name: string;
     kind: string;
   }
 
@@ -17,11 +17,11 @@
 
   let error = $state<string>("");
   let capturing = $state(false);
-  let scapTargets = $state<ScapTarget[]>([]);
-  let scapTargetsLoaded = $state(false);
-  let scapError = $state<string>("");
-  let selectedScapIndex = $state<number>(0);
-  let unlistenScapError: (() => void) | null = null;
+  let captureTargets = $state<CaptureTarget[]>([]);
+  let targetsLoaded = $state(false);
+  let targetsError = $state<string>("");
+  let selectedTargetIndex = $state<number>(0);
+  let unlistenError: (() => void) | null = null;
 
   function getInvokeError(e: unknown): string {
     if (typeof e === "string") return e;
@@ -37,9 +37,9 @@
   }
 
   function stopCapture() {
-    if (isTauri) invoke("stop_scap_capture").catch(() => {});
-    unlistenScapError?.();
-    unlistenScapError = null;
+    if (isTauri) invoke("stop_capture").catch(() => {});
+    unlistenError?.();
+    unlistenError = null;
     capturing = false;
     error = "";
   }
@@ -47,11 +47,11 @@
   async function startCapture() {
     error = "";
     stopCapture();
-    const targetIndex = scapTargets.length > 0 ? Number(selectedScapIndex) : null;
+    const targetIndex = captureTargets.length > 0 ? Number(selectedTargetIndex) : null;
     try {
-      await invoke("start_scap_capture", { targetIndex });
+      await invoke("start_capture", { targetIndex });
       capturing = true;
-      unlistenScapError = await listen("scap-error", (event) => {
+      unlistenError = await listen("capture-error", (event) => {
         error = String(event.payload);
       });
     } catch (e) {
@@ -59,27 +59,27 @@
     }
   }
 
-  function loadScapTargets() {
-    scapTargetsLoaded = false;
-    scapError = "";
-    const loadPromise = invoke<ScapTarget[]>("get_scap_targets")
+  function loadCaptureTargets() {
+    targetsLoaded = false;
+    targetsError = "";
+    const loadPromise = invoke<CaptureTarget[]>("get_capture_targets")
       .then((targets) => {
-        scapTargets = targets ?? [];
-        scapError = "";
-        scapTargetsLoaded = true;
-        if (targets?.length) selectedScapIndex = 0;
+        captureTargets = targets ?? [];
+        targetsError = "";
+        targetsLoaded = true;
+        if (targets?.length) selectedTargetIndex = 0;
       })
       .catch((e) => {
-        scapError = getInvokeError(e);
-        scapTargetsLoaded = true;
+        targetsError = getInvokeError(e);
+        targetsLoaded = true;
       });
     const timeoutPromise = new Promise<void>((r) =>
       setTimeout(r, LOAD_TARGETS_TIMEOUT_MS)
     );
     Promise.race([loadPromise, timeoutPromise]).then(() => {
-      if (!scapTargetsLoaded) {
-        scapTargetsLoaded = true;
-        scapError =
+      if (!targetsLoaded) {
+        targetsLoaded = true;
+        targetsError =
           "Loading timed out. Check that the system screen-sharing dialog appeared, or try again.";
       }
     });
@@ -90,7 +90,7 @@
     let unlistenStop: (() => void) | null = null;
 
     if (isTauri) {
-      loadScapTargets();
+      loadCaptureTargets();
       listen("capture-start", startCapture).then((fn) => (unlistenStart = fn));
       listen("capture-stop", stopCapture).then((fn) => (unlistenStop = fn));
     }
@@ -112,20 +112,20 @@
     <span class="title">LiteView</span>
     {#if capturing}
       <button type="button" class="btn btn-stop" onclick={stopCapture}>Stop</button>
-    {:else if scapTargets.length > 0}
+    {:else if captureTargets.length > 0}
       <select
         class="display-select"
-        bind:value={selectedScapIndex}
+        bind:value={selectedTargetIndex}
         aria-label="Select screen or window"
       >
-        {#each scapTargets as t}
-          <option value={t.index}>{t.title} ({t.kind})</option>
+        {#each captureTargets as t}
+          <option value={t.index}>{t.name} ({t.kind})</option>
         {/each}
       </select>
       <button type="button" class="btn btn-start" onclick={startCapture}>
         Start capture
       </button>
-    {:else if isTauri && scapTargetsLoaded && !scapError}
+    {:else if isTauri && targetsLoaded && !targetsError}
       <button type="button" class="btn btn-start" onclick={startCapture}>
         Select screen / Start capture
       </button>
@@ -141,30 +141,28 @@
     {#if error}
       <p class="error" role="alert">{error}</p>
     {/if}
-    {#if isTauri && scapTargetsLoaded && scapTargets.length === 0 && scapError && !capturing}
-      <p class="error" role="alert">{scapError}</p>
+    {#if isTauri && targetsLoaded && captureTargets.length === 0 && targetsError && !capturing}
+      <p class="error" role="alert">{targetsError}</p>
       <p class="hint">
-        Don't run with sudo. On Linux Wayland: ensure PipeWire and xdg-desktop-portal
-        are installed; grant screen-sharing when the system prompts you.
+        Ensure screen capture permissions are granted.
       </p>
-      <button type="button" class="btn btn-start retry-btn" onclick={loadScapTargets}>
+      <button type="button" class="btn btn-start retry-btn" onclick={loadCaptureTargets}>
         Retry
       </button>
     {:else if !capturing && !error}
       <p class="hint">
-        {#if scapTargets.length > 0}
-          Select a screen/window above and click "Start capture".
-        {:else if isTauri && !scapTargetsLoaded}
+        {#if captureTargets.length > 0}
+          Select a screen above and click "Start capture".
+        {:else if isTauri && !targetsLoaded}
           Loading capture targets…
-        {:else if isTauri && scapTargetsLoaded && scapTargets.length === 0}
-          On Linux, click "Select screen / Start capture" above. A system dialog will
-          let you choose which screen or window to capture.
+        {:else if isTauri && targetsLoaded && captureTargets.length === 0}
+          Click "Select screen / Start capture" above.
         {:else}
           Run as desktop app (pnpm tauri dev) for screen capture.
         {/if}
       </p>
-      {#if isTauri && scapTargetsLoaded && scapTargets.length === 0 && scapError}
-        <button type="button" class="btn btn-start retry-btn" onclick={loadScapTargets}>
+      {#if isTauri && targetsLoaded && captureTargets.length === 0 && targetsError}
+        <button type="button" class="btn btn-start retry-btn" onclick={loadCaptureTargets}>
           Retry
         </button>
       {/if}
