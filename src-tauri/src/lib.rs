@@ -16,7 +16,6 @@ use tauri::{Emitter, Manager, State};
 
 const CAPTURE_FPS: u32 = 60;
 const LIVE_FRAME_THRESHOLD_MS: u128 = 5;
-const PREVIEW_WAIT_US: u64 = 500;
 
 #[derive(Debug, Clone, Serialize)]
 struct TargetDto {
@@ -161,6 +160,7 @@ fn start_scap_capture(
 
     if let Some(old_state) = state.preview_state.lock().unwrap().take() {
         old_state.running.store(false, Ordering::Relaxed);
+        old_state.frame_available.notify_one();
     }
 
     let preview_state = Arc::new(PreviewState::default());
@@ -174,7 +174,6 @@ fn start_scap_capture(
     thread::spawn(move || preview::run_preview_window(preview_state_for_window));
 
     let stop_requested_clone = state.stop_requested.clone();
-    let wait_duration = std::time::Duration::from_micros(PREVIEW_WAIT_US);
 
     thread::spawn(move || {
         let mut capturer = match Capturer::build(options) {
@@ -190,13 +189,16 @@ fn start_scap_capture(
         while !stop_requested_clone.load(Ordering::Relaxed)
             && preview_state.running.load(Ordering::Relaxed)
         {
-            while preview_state.frame.lock().unwrap().is_some() {
-                if !preview_state.running.load(Ordering::Relaxed)
-                    || stop_requested_clone.load(Ordering::Relaxed)
-                {
-                    break;
+            {
+                let mut guard = preview_state.frame.lock().unwrap();
+                while guard.is_some() {
+                    if !preview_state.running.load(Ordering::Relaxed)
+                        || stop_requested_clone.load(Ordering::Relaxed)
+                    {
+                        break;
+                    }
+                    guard = preview_state.frame_consumed.wait(guard).unwrap();
                 }
-                std::thread::sleep(wait_duration);
             }
 
             let mut latest_frame = None;
@@ -214,16 +216,19 @@ fn start_scap_capture(
 
             if let Some(frame) = latest_frame {
                 if let Some((width, height, buffer)) = frame_to_buffer(&frame) {
-                    *preview_state.frame.lock().unwrap() = Some(FrameData {
+                    let mut guard = preview_state.frame.lock().unwrap();
+                    *guard = Some(FrameData {
                         width,
                         height,
                         buffer,
                     });
+                    preview_state.frame_available.notify_one();
                 }
             }
         }
         capturer.stop_capture();
         preview_state.running.store(false, Ordering::Relaxed);
+        preview_state.frame_available.notify_one();
     });
 
     Ok(())
@@ -234,6 +239,7 @@ fn stop_scap_capture(state: State<ScapState>) -> Result<(), String> {
     state.stop_requested.store(true, Ordering::Relaxed);
     if let Some(preview_state) = state.preview_state.lock().unwrap().take() {
         preview_state.running.store(false, Ordering::Relaxed);
+        preview_state.frame_available.notify_one();
     }
     Ok(())
 }
