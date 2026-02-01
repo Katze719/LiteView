@@ -8,6 +8,9 @@
     "opener:default",
     "core:window:default",
     "core:window:allow-start-dragging",
-    "core:event:allow-listen"
+    "core:event:allow-listen",
+    "allow-get-scap-targets",
+    "allow-start-scap-capture",
+    "allow-stop-scap-capture"
   ]
 }

@@ -6,40 +6,41 @@ the real screen) is optional and not implemented yet.
 
 Built with **Tauri v2**, SvelteKit, and TypeScript.
 
-> **Note:** Linux is currently not supported (screen capture fails in the Tauri
-> window). Use Windows or macOS, or run the frontend in a browser on Linux.
-
 ## How it works
 
-- **Capture**: Uses the system’s native screen/window picker via
-  **getDisplayMedia()** (Screen Capture API). On Linux Wayland this goes through
-  **xdg-desktop-portal** (PipeWire); on Windows/macOS it uses the OS picker.
-- **Render**: The captured stream is drawn to a **Canvas** (2D). A WebGL
-  pipeline can be added later for effects or click-through coordinate mapping.
-
-No Rust screen-capture code: everything runs in the webview with standard web
-APIs.
+- **Capture (Tauri)**: When running as the Tauri app, capture uses the
+  **[scap](https://crates.io/crates/scap)** crate in Rust. The backend lists
+  displays and windows, streams frames as PNG over Tauri events, and renders
+  them on a canvas. This avoids the Linux **getDisplayMedia()** / WebKit
+  permission issues and works on Windows, macOS, and Linux.
+- **Capture (fallback)**: If scap targets are not available (e.g. in browser),
+  the app falls back to **getDisplayMedia()** (Screen Capture API) with the
+  system picker. On Linux Wayland this uses **xdg-desktop-portal** (PipeWire);
+  on Windows/macOS the native picker.
+- **Render**: The captured stream (or scap frames) is drawn to a **Canvas**
+  (2D). A WebGL pipeline could be added later for effects or click-through
+  coordinate mapping.
 
 ## Features
 
-- **Picture-in-picture**: “Select screen/window” opens the system picker; the
-  chosen display is shown in the small window.
+- **Picture-in-picture**: In Tauri, choose a screen or window from a dropdown
+  and click “Start capture”. In browser mode, “Select screen/window” opens the
+  system picker.
 - **Draggable overlay**: Drag by the title bar; window stays on top.
-- **System tray**: Tray icon with menu: Select screen / Start capture (opens
-  picker), Stop capture, Show LiteView, Settings, Quit. Left-click opens the
-  menu.
+- **System tray**: Tray icon with menu: Select screen / Start capture, Stop
+  capture, Show LiteView, Settings, Quit. Left-click opens the menu.
 - **Click-through** (optional, not yet): Could be added later by mapping canvas
   coordinates to the captured surface.
 
 ## Platform support
 
-- **Windows**: Supported (native picker).
-- **Linux**: **Not yet supported.** Screen capture in the Tauri window fails with
-  NotAllowedError (Wry/WebKit does not handle the display-capture permission
-  request). Use the app in a browser at `http://localhost:1420` on Linux for
-  now.
-- **macOS**: Supported (native picker; may need screen recording permission in
-  System Settings).
+- **Windows**: Supported (scap in Tauri; getDisplayMedia in browser).
+- **Linux**: Supported in the Tauri app via scap (no portal/WebKit display
+  capture needed). In browser, getDisplayMedia may fail with NotAllowedError
+  after picking a screen (WebKit/portal quirk); use the Tauri build for reliable
+  capture.
+- **macOS**: Supported (scap in Tauri; native picker in browser; may need screen
+  recording permission in System Settings).
 
 ## Dev
 
@@ -69,8 +70,19 @@ pnpm tauri build  # Production build
 
 ## Project structure
 
-- `src/` – SvelteKit frontend (getDisplayMedia, canvas render).
-- `src-tauri/` – Tauri v2 shell (window config, no capture logic).
+- **src/** – SvelteKit frontend: scap UI (target list, start/stop), canvas
+  render, getDisplayMedia fallback, tray event listeners.
+- **src-tauri/** – Tauri v2 shell: scap capture (get_scap_targets,
+  start_scap_capture, stop_scap_capture), window config, system tray.
+
+## Scap capture notes
+
+- Frames are captured at 10 FPS and sent as base64 PNGs over the `scap-frame`
+  event. Stop is requested via `stop_scap_capture`; the capture thread may take
+  a moment to exit because `get_next_frame()` blocks until the next frame or
+  source close.
+- On Linux, scap uses the appropriate backend (e.g. PipeWire/portal or X11);
+  ensure screen-sharing permission is granted when prompted.
 
 ## License
 

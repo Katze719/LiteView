@@ -1,93 +1,98 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
 
-  let videoEl = $state<HTMLVideoElement | null>(null);
-  let canvasEl = $state<HTMLCanvasElement | null>(null);
-  let stream = $state<MediaStream | null>(null);
+  interface ScapTarget {
+    index: number;
+    id: number;
+    title: string;
+    kind: string;
+  }
+
   let error = $state<string>("");
   let capturing = $state(false);
-  let rafId = $state<number | null>(null);
+  let scapTargets = $state<ScapTarget[]>([]);
+  let scapTargetsLoaded = $state(false);
+  let scapError = $state<string>("");
+  let selectedScapIndex = $state<number>(0);
+  let unlistenScapError: (() => void) | null = null;
 
-  function drawFrame() {
-    if (!videoEl || !canvasEl || !stream || videoEl.readyState < 2) return;
-    const ctx = canvasEl.getContext("2d");
-    if (!ctx) return;
-    const vw = videoEl.videoWidth;
-    const vh = videoEl.videoHeight;
-    if (vw === 0 || vh === 0) return;
-    if (canvasEl.width !== vw || canvasEl.height !== vh) {
-      canvasEl.width = vw;
-      canvasEl.height = vh;
-    }
-    ctx.drawImage(videoEl, 0, 0);
-    rafId = requestAnimationFrame(drawFrame);
-  }
+  const isTauri =
+    typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
 
-  function startDrawing() {
-    if (!videoEl || !canvasEl || !stream) return;
-    rafId = requestAnimationFrame(drawFrame);
-  }
-
-  function stopDrawing() {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
+  /** Extract error message from Tauri invoke rejection (string, Error, or { message }). */
+  function getInvokeError(e: unknown): string {
+    if (typeof e === "string") return e;
+    if (e instanceof Error) return e.message;
+    if (e != null && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string")
+      return (e as { message: string }).message;
+    return String(e);
   }
 
   function stopCapture() {
-    stopDrawing();
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      stream = null;
+    if (isTauri) {
+      invoke("stop_scap_capture").catch(() => {});
     }
-    if (videoEl) {
-      videoEl.srcObject = null;
-    }
+    unlistenScapError?.();
+    unlistenScapError = null;
     capturing = false;
     error = "";
   }
 
-  async function startCapture() {
+  /** Start capture. Preview opens in native window (tao + wgpu). */
+  async function startCaptureWithScap() {
     error = "";
-    // Call getDisplayMedia immediately (no await before) so the user gesture
-    // is still active in WebKit – otherwise some Linux/Wayland setups throw
-    // NotAllowedError after the portal returns.
-    const streamPromise = navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: false,
-    });
+    stopCapture();
+    const targetIndex =
+      scapTargets.length > 0 ? Number(selectedScapIndex) : null;
     try {
-      const mediaStream = await streamPromise;
-      stopCapture();
-      stream = mediaStream;
+      await invoke("start_scap_capture", { targetIndex });
       capturing = true;
-      const video = videoEl;
-      if (video) {
-        video.srcObject = mediaStream;
-        video.onloadedmetadata = () => {
-          video.play().catch(() => {});
-          startDrawing();
-        };
-      }
-      mediaStream.getVideoTracks()[0]?.addEventListener("ended", stopCapture);
+      unlistenScapError = await listen("scap-error", (event) => {
+        error = String(event.payload);
+      });
     } catch (e) {
-      const err = e as DOMException;
-      if (err?.name === "NotAllowedError") {
-        error =
-          "Screen sharing was denied or failed. On Linux Wayland this can happen " +
-          "after selecting a screen (WebKit/portal quirk). See README for workarounds.";
-      } else {
-        error = err?.message ?? String(e);
-      }
+      error = getInvokeError(e);
     }
   }
 
+  /** Called e.g. from tray "capture-start"; only starts scap capture. */
+  async function startCapture() {
+    await startCaptureWithScap();
+  }
+
+  const LOAD_TARGETS_TIMEOUT_MS = 15_000;
+
+  function loadScapTargets() {
+    scapTargetsLoaded = false;
+    scapError = "";
+    const loadPromise = invoke<ScapTarget[]>("get_scap_targets")
+      .then((targets) => {
+        scapTargets = targets ?? [];
+        scapError = "";
+        scapTargetsLoaded = true;
+        if (scapTargets.length > 0) selectedScapIndex = 0;
+      })
+      .catch((e) => {
+        scapError = getInvokeError(e);
+        scapTargetsLoaded = true;
+      });
+    const timeoutPromise = new Promise<void>((resolve) =>
+      setTimeout(() => resolve(), LOAD_TARGETS_TIMEOUT_MS)
+    );
+    Promise.race([loadPromise, timeoutPromise]).then(() => {
+      if (!scapTargetsLoaded) {
+        scapTargetsLoaded = true;
+        scapError =
+          "Loading timed out. Check that the system screen-sharing dialog appeared, or try again.";
+      }
+    });
+  }
+
   onMount(() => {
-    let unlistenStart: (() => void) | null = null;
-    let unlistenStop: (() => void) | null = null;
-    if (typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined") {
+    if (isTauri) {
+      loadScapTargets();
       listen("capture-start", () => startCapture()).then((fn) => {
         unlistenStart = fn;
       });
@@ -95,6 +100,8 @@
         unlistenStop = fn;
       });
     }
+    let unlistenStart: (() => void) | null = null;
+    let unlistenStop: (() => void) | null = null;
     return () => {
       unlistenStart?.();
       unlistenStop?.();
@@ -113,31 +120,61 @@
     {#if capturing}
       <button type="button" class="btn btn-stop" onclick={stopCapture}>Stop</button>
     {:else}
-      <button type="button" class="btn btn-start" onclick={startCapture}>
-        Select screen/window
-      </button>
+      {#if scapTargets.length > 0}
+        <select
+          class="display-select"
+          bind:value={selectedScapIndex}
+          aria-label="Select screen or window"
+        >
+          {#each scapTargets as t}
+            <option value={t.index}>{t.title} ({t.kind})</option>
+          {/each}
+        </select>
+        <button type="button" class="btn btn-start" onclick={startCaptureWithScap}>
+          Start capture
+        </button>
+      {:else if isTauri && scapTargetsLoaded && !scapError}
+        <button type="button" class="btn btn-start" onclick={startCaptureWithScap}>
+          Select screen / Start capture
+        </button>
+      {/if}
     {/if}
   </header>
 
   <main class="preview">
-    <video
-      bind:this={videoEl}
-      class="video-src"
-      muted
-      playsinline
-      autoplay
-      aria-hidden="true"
-    ></video>
-    <canvas
-      bind:this={canvasEl}
-      class="preview-canvas"
-      aria-label="Screen preview"
-    ></canvas>
+    {#if capturing}
+      <p class="hint">Preview runs in the separate “LiteView Preview” window (native, low latency).</p>
+    {/if}
     {#if error}
       <p class="error" role="alert">{error}</p>
     {/if}
-    {#if !capturing && !error}
-      <p class="hint">Click “Select screen/window” to show another screen in this window.</p>
+    {#if isTauri && scapTargetsLoaded && scapTargets.length === 0 && scapError && !capturing}
+      <p class="error" role="alert">{scapError}</p>
+      <p class="hint">
+        Don't run with sudo. On Linux Wayland: ensure PipeWire and
+        xdg-desktop-portal are installed; grant screen-sharing when the system
+        prompts you.
+      </p>
+      <button type="button" class="btn btn-start retry-btn" onclick={loadScapTargets}>
+        Retry
+      </button>
+    {:else if !capturing && !error}
+      <p class="hint">
+        {#if scapTargets.length > 0}
+          Select a screen/window above and click “Start capture”.
+        {:else if isTauri && !scapTargetsLoaded}
+          Loading capture targets…
+        {:else if isTauri && scapTargetsLoaded && scapTargets.length === 0}
+          On Linux, click “Select screen / Start capture” above. A system dialog will let you choose which screen or window to capture.
+        {:else}
+          Run as desktop app (pnpm tauri dev) for screen capture.
+        {/if}
+      </p>
+      {#if isTauri && scapTargetsLoaded && scapTargets.length === 0 && scapError}
+        <button type="button" class="btn btn-start retry-btn" onclick={loadScapTargets}>
+          Retry
+        </button>
+      {/if}
     {/if}
   </main>
 </div>
@@ -164,6 +201,18 @@
   .title {
     font-size: 0.875rem;
     font-weight: 600;
+  }
+
+  .display-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--fg);
+    cursor: pointer;
   }
 
   .btn {
@@ -194,6 +243,10 @@
     background: var(--hover);
   }
 
+  .retry-btn {
+    margin-top: 0.75rem;
+  }
+
   .preview {
     flex: 1;
     min-height: 0;
@@ -203,21 +256,6 @@
     justify-content: center;
     background: var(--preview-bg);
     overflow: hidden;
-  }
-
-  .video-src {
-    position: absolute;
-    width: 0;
-    height: 0;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .preview-canvas {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    display: block;
   }
 
   .error {
