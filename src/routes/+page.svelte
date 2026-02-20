@@ -20,12 +20,18 @@
     { value: "4320p", label: "4320p (8K)" },
   ] as const;
 
+  type TargetItem = { index: number; id: number; title: string; kind: string };
+
   let error = $state<string>("");
   let capturing = $state(false);
   let settingsFps = $state(60);
   let settingsResolution = $state("captured");
+  let settingsTargetIndex = $state<string>("");
+  let settingsShowCursor = $state(true);
   let settingsSaved = $state(false);
   let appVersion = $state("");
+  let captureTargets = $state<TargetItem[]>([]);
+  let targetsLoading = $state(false);
   let unlistenError: (() => void) | null = null;
 
   function getInvokeError(e: unknown): string {
@@ -63,13 +69,34 @@
     }
   }
 
+  async function loadTargets() {
+    if (!isTauri) return;
+    targetsLoading = true;
+    try {
+      captureTargets = await invoke<TargetItem[]>("get_capture_targets");
+    } catch {
+      captureTargets = [];
+    } finally {
+      targetsLoading = false;
+    }
+  }
+
   async function loadSettings() {
     if (!isTauri) return;
     try {
-      const s = await invoke<{ fps: number; resolution: string }>("get_capture_settings");
+      const s = await invoke<{
+        fps: number;
+        resolution: string;
+        target_index: number | null;
+        show_cursor: boolean;
+      }>("get_capture_settings");
       settingsFps = s.fps;
       settingsResolution = s.resolution ?? "captured";
+      settingsTargetIndex =
+        s.target_index != null ? String(s.target_index) : "";
+      settingsShowCursor = s.show_cursor ?? true;
       appVersion = await invoke<string>("get_app_version");
+      await loadTargets();
     } catch {
       /* keep defaults */
     }
@@ -82,6 +109,11 @@
       await invoke("set_capture_settings", {
         fps: Number(settingsFps),
         resolution: settingsResolution,
+        targetIndex:
+          settingsTargetIndex === ""
+            ? null
+            : Number(settingsTargetIndex),
+        showCursor: settingsShowCursor,
       });
       settingsSaved = true;
       setTimeout(() => (settingsSaved = false), 1500);
@@ -147,6 +179,24 @@
       <h2 class="card-title">Capture</h2>
       <p class="card-desc">FPS and output resolution. Saved automatically and restored on next launch; applied on the next capture start.</p>
 
+      <div class="field field-full">
+        <label for="target">Capture target</label>
+        <select
+          id="target"
+          bind:value={settingsTargetIndex}
+          class="input"
+          disabled={targetsLoading}
+          onchange={() => saveSettings()}
+        >
+          <option value="">Default (primary)</option>
+          {#each captureTargets as t}
+            <option value={t.index}>
+              [{#if t.kind === "display"}Display{:else}Window{/if}] {t.title || "Unnamed"}
+            </option>
+          {/each}
+        </select>
+      </div>
+
       <div class="form-row">
         <div class="field">
           <label for="fps">Frame rate</label>
@@ -176,6 +226,17 @@
         </div>
       </div>
 
+      <div class="field field-checkbox">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            bind:checked={settingsShowCursor}
+            onchange={() => saveSettings()}
+          />
+          <span>Show cursor in capture</span>
+        </label>
+      </div>
+
       <button
         type="button"
         class="btn btn-primary"
@@ -194,7 +255,7 @@
     <section class="card card-muted">
       <h2 class="card-title">How to use</h2>
       <p class="card-desc">
-        Click the <strong>tray icon</strong> and choose <strong>Start capture…</strong> to pick a screen or window (PipeWire).
+        Choose a <strong>capture target</strong> above (display or window), then click the <strong>tray icon</strong> and <strong>Start capture…</strong>.
         The preview opens in a separate window. Use <strong>Stop capture</strong> when done.
       </p>
       <p class="card-desc">

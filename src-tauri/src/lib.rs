@@ -40,10 +40,18 @@ fn save_settings_to_disk(app: &AppHandle, settings: &CaptureSettings) -> Result<
     fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
+fn default_show_cursor() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CaptureSettings {
     fps: u32,
     resolution: String,
+    #[serde(default)]
+    target_index: Option<usize>,
+    #[serde(default = "default_show_cursor")]
+    show_cursor: bool,
 }
 
 impl Default for CaptureSettings {
@@ -51,6 +59,8 @@ impl Default for CaptureSettings {
         Self {
             fps: DEFAULT_CAPTURE_FPS,
             resolution: DEFAULT_RESOLUTION.to_string(),
+            target_index: None,
+            show_cursor: true,
         }
     }
 }
@@ -137,6 +147,8 @@ impl Default for CaptureState {
 struct CaptureSettingsDto {
     fps: u32,
     resolution: String,
+    target_index: Option<usize>,
+    show_cursor: bool,
 }
 
 #[tauri::command]
@@ -145,6 +157,8 @@ fn get_capture_settings(state: State<CaptureState>) -> CaptureSettingsDto {
     CaptureSettingsDto {
         fps: s.fps,
         resolution: s.resolution.clone(),
+        target_index: s.target_index,
+        show_cursor: s.show_cursor,
     }
 }
 
@@ -153,6 +167,8 @@ fn set_capture_settings(
     app: AppHandle,
     fps: u32,
     resolution: String,
+    target_index: Option<usize>,
+    show_cursor: bool,
     state: State<CaptureState>,
 ) -> Result<(), String> {
     let fps = fps.clamp(1, 120);
@@ -164,6 +180,8 @@ fn set_capture_settings(
     let settings = CaptureSettings {
         fps,
         resolution: resolution.clone(),
+        target_index,
+        show_cursor,
     };
     *state.settings.lock().unwrap() = settings.clone();
     save_settings_to_disk(&app, &settings)?;
@@ -308,7 +326,7 @@ fn start_capture(
     let settings = state.settings.lock().unwrap().clone();
     let resolution_for_scale = settings.resolution.clone();
     let target_fps = settings.fps.max(1);
-    let target_index_for_thread = target_index;
+    let target_index_for_thread = target_index.or(settings.target_index);
 
     if let Some(old_state) = state.preview_state.lock().unwrap().take() {
         old_state.running.store(false, Ordering::Relaxed);
@@ -328,7 +346,7 @@ fn start_capture(
         let target = target_index_for_thread.and_then(|idx| get_all_targets().into_iter().nth(idx));
         let options = Options {
             fps: settings.fps,
-            show_cursor: true,
+            show_cursor: settings.show_cursor,
             show_highlight: false,
             target,
             crop_area: None,
