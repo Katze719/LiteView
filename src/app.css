@@ -40,6 +40,10 @@ html {
   color: var(--fg);
 }
 
+html {
+  font-size: 17px;
+}
+
 html,
 body {
   margin: 0;
