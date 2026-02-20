@@ -31,7 +31,9 @@ jobs:
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/')
-        run: node -e "const ref='${{ github.ref_name }}';const v=ref.startsWith('v')?ref.slice(1):ref;const fs=require('fs');const t=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));t.version=v;fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(t,null,2));const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=v;fs.writeFileSync('package.json',JSON.stringify(p,null,2));const c=fs.readFileSync('src-tauri/Cargo.toml','utf8');fs.writeFileSync('src-tauri/Cargo.toml',c.replace(/^version = \".*\"/,'version = \"'+v+'\"'));console.log('Version set to',v);"
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: node scripts/set-version-from-tag.cjs
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-24.04'
