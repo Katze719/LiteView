@@ -145,7 +145,7 @@
 
     <section class="card">
       <h2 class="card-title">Capture</h2>
-      <p class="card-desc">FPS and output resolution. Saved automatically when you change them; applied on the next capture start.</p>
+      <p class="card-desc">FPS and output resolution. Saved automatically and restored on next launch; applied on the next capture start.</p>
 
       <div class="form-row">
         <div class="field">

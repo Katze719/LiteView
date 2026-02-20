@@ -24,6 +24,7 @@ wgpu = "23"
 winit = "0.30"
 scap = "0.0.8"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 pollster = "0.4"
 
 # scap 0.0.8 needs windows-capture with Context, as_nopadding_buffer, and 5-arg WCSettings::new

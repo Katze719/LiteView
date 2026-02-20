@@ -5,6 +5,8 @@ use scap::capturer::{Capturer, Options, Resolution as ScapResolution};
 use scap::frame::{Frame, FrameType};
 use scap::{get_all_targets, has_permission, is_supported, request_permission, Target};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -13,10 +15,30 @@ use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
-use tauri::{Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const DEFAULT_CAPTURE_FPS: u32 = 60;
 const DEFAULT_RESOLUTION: &str = "captured";
+const SETTINGS_FILENAME: &str = "settings.json";
+
+fn settings_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|p| p.join(SETTINGS_FILENAME))
+}
+
+fn load_settings_from_disk(app: &AppHandle) -> Option<CaptureSettings> {
+    let path = settings_path(app)?;
+    let contents = fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&contents).ok()
+}
+
+fn save_settings_to_disk(app: &AppHandle, settings: &CaptureSettings) -> Result<(), String> {
+    let path = settings_path(app).ok_or("App data dir not available")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let contents = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    fs::write(&path, contents).map_err(|e| e.to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CaptureSettings {
@@ -128,6 +150,7 @@ fn get_capture_settings(state: State<CaptureState>) -> CaptureSettingsDto {
 
 #[tauri::command]
 fn set_capture_settings(
+    app: AppHandle,
     fps: u32,
     resolution: String,
     state: State<CaptureState>,
@@ -138,10 +161,12 @@ fn set_capture_settings(
     if !valid.contains(&resolution.as_str()) {
         return Err(format!("Invalid resolution: {}", resolution));
     }
-    *state.settings.lock().unwrap() = CaptureSettings {
+    let settings = CaptureSettings {
         fps,
         resolution: resolution.clone(),
     };
+    *state.settings.lock().unwrap() = settings.clone();
+    save_settings_to_disk(&app, &settings)?;
     Ok(())
 }
 
@@ -390,6 +415,9 @@ pub fn run() {
             stop_capture,
         ])
         .setup(|app| {
+            if let Some(loaded) = load_settings_from_disk(&app.handle()) {
+                *app.state::<CaptureState>().settings.lock().unwrap() = loaded;
+            }
             let slot = app.state::<CaptureState>().preview_state.clone();
             thread::spawn(move || preview::run_preview_window(slot));
 
