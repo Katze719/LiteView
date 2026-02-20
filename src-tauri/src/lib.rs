@@ -283,19 +283,7 @@ fn start_capture(
     let settings = state.settings.lock().unwrap().clone();
     let resolution_for_scale = settings.resolution.clone();
     let target_fps = settings.fps.max(1);
-    let target = target_index.and_then(|idx| get_all_targets().into_iter().nth(idx));
-
-    let options = Options {
-        fps: settings.fps,
-        show_cursor: true,
-        show_highlight: false,
-        target,
-        crop_area: None,
-        output_type: FrameType::BGRAFrame,
-        output_resolution: resolution_from_str(&settings.resolution),
-        excluded_targets: None,
-        ..Default::default()
-    };
+    let target_index_for_thread = target_index;
 
     if let Some(old_state) = state.preview_state.lock().unwrap().take() {
         old_state.running.store(false, Ordering::Relaxed);
@@ -312,6 +300,18 @@ fn start_capture(
     let stop_requested_clone = state.stop_requested.clone();
 
     thread::spawn(move || {
+        let target = target_index_for_thread.and_then(|idx| get_all_targets().into_iter().nth(idx));
+        let options = Options {
+            fps: settings.fps,
+            show_cursor: true,
+            show_highlight: false,
+            target,
+            crop_area: None,
+            output_type: FrameType::BGRAFrame,
+            output_resolution: resolution_from_str(&settings.resolution),
+            excluded_targets: None,
+            ..Default::default()
+        };
         let mut capturer = match Capturer::build(options) {
             Ok(c) => c,
             Err(e) => {
