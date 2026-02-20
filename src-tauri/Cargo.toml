@@ -25,3 +25,7 @@ winit = "0.30"
 scap = "0.0.8"
 serde = { version = "1", features = ["derive"] }
 pollster = "0.4"
+
+# scap 0.0.8 needs windows-capture 1.3.x (WCSettings::new has 5 args there; 1.4+ has 8)
+[patch.crates-io]
+windows-capture = { git = "https://github.com/NiiightmareXD/windows-capture", rev = "ab6be75" }
