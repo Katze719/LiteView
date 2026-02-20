@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
 use tauri::{Emitter, Manager, State};
@@ -42,6 +43,48 @@ fn resolution_from_str(s: &str) -> ScapResolution {
         "4320p" => ScapResolution::_4320p,
         _ => ScapResolution::Captured,
     }
+}
+
+/// Target (width, height) for a resolution string and source aspect ratio (width/height).
+/// Returns None for "captured" (no scaling).
+fn resolution_target_size(resolution: &str, aspect_ratio: f32) -> Option<(u32, u32)> {
+    let (base_w, base_h) = match resolution.to_lowercase().as_str() {
+        "480p" => (640, (640_f32 / aspect_ratio).floor() as u32),
+        "720p" => (1280, (1280_f32 / aspect_ratio).floor() as u32),
+        "1080p" => (1920, (1920_f32 / aspect_ratio).floor() as u32),
+        "1440p" => (2560, (2560_f32 / aspect_ratio).floor() as u32),
+        "2160p" => (3840, (3840_f32 / aspect_ratio).floor() as u32),
+        "4320p" => (7680, (7680_f32 / aspect_ratio).floor() as u32),
+        _ => return None,
+    };
+    Some((base_w, base_h.max(1)))
+}
+
+/// Nearest-neighbor resize of RGBA32 buffer (packed u32: 0xAABBGGRR or similar).
+fn resize_frame(
+    src_w: u32,
+    src_h: u32,
+    src: &[u32],
+    dst_w: u32,
+    dst_h: u32,
+) -> Vec<u32> {
+    let mut dst = vec![0u32; (dst_w as usize).saturating_mul(dst_h as usize)];
+    if src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0 {
+        return dst;
+    }
+    let src_w = src_w as usize;
+    let src_h = src_h as usize;
+    let dst_w = dst_w as usize;
+    let dst_h = dst_h as usize;
+    for y in 0..dst_h {
+        let sy = (y as u64 * (src_h as u64 - 1) / dst_h.max(1) as u64) as usize;
+        let src_row = sy.saturating_mul(src_w);
+        for x in 0..dst_w {
+            let sx = (x as u64 * (src_w as u64 - 1) / dst_w.max(1) as u64) as usize;
+            dst[y * dst_w + x] = src.get(src_row + sx).copied().unwrap_or(0);
+        }
+    }
+    dst
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,6 +143,11 @@ fn set_capture_settings(
         resolution: resolution.clone(),
     };
     Ok(())
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -233,6 +281,8 @@ fn start_capture(
     state.stop_requested.store(false, Ordering::Relaxed);
 
     let settings = state.settings.lock().unwrap().clone();
+    let resolution_for_scale = settings.resolution.clone();
+    let target_fps = settings.fps.max(1);
     let target = target_index.and_then(|idx| get_all_targets().into_iter().nth(idx));
 
     let options = Options {
@@ -272,6 +322,9 @@ fn start_capture(
         };
         capturer.start_capture();
 
+        let frame_interval = Duration::from_secs_f64(1.0 / target_fps as f64);
+        let mut last_push = Instant::now();
+
         while !stop_requested_clone.load(Ordering::Relaxed)
             && preview_state.running.load(Ordering::Relaxed)
         {
@@ -281,10 +334,25 @@ fn start_capture(
             };
 
             if let Some((width, height, buffer)) = frame_to_buffer(&frame) {
+                let now = Instant::now();
+                if now.duration_since(last_push) < frame_interval {
+                    continue;
+                }
+                last_push = now;
+
+                let (out_width, out_height, out_buffer) =
+                    if let Some((tw, th)) =
+                        resolution_target_size(&resolution_for_scale, width as f32 / height as f32)
+                    {
+                        let scaled = resize_frame(width, height, &buffer, tw, th);
+                        (tw, th, scaled)
+                    } else {
+                        (width, height, buffer)
+                    };
                 *preview_state.frame.lock().unwrap() = Some(FrameData {
-                    width,
-                    height,
-                    buffer,
+                    width: out_width,
+                    height: out_height,
+                    buffer: out_buffer,
                 });
                 preview_state.frame_available.notify_one();
             }
@@ -314,6 +382,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(CaptureState::default())
         .invoke_handler(tauri::generate_handler![
+            get_app_version,
             get_capture_targets,
             get_capture_settings,
             set_capture_settings,
@@ -327,22 +396,26 @@ pub fn run() {
             let start_capture_i = MenuItem::with_id(
                 app,
                 "start_capture",
-                "Select screen / Start capture",
+                "Start capture…",
                 true,
                 None::<&str>,
             )?;
             let stop_capture_i =
                 MenuItem::with_id(app, "stop_capture", "Stop capture", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show LiteView", true, None::<&str>)?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let show_i = MenuItem::with_id(app, "show", "Show window", true, None::<&str>)?;
             let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit LiteView", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
                 &[
                     &start_capture_i,
                     &stop_capture_i,
+                    &sep1,
                     &show_i,
                     &settings_i,
+                    &sep2,
                     &quit_i,
                 ],
             )?;

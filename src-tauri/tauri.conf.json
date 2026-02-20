@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "LiteView",
-        "width": 480,
-        "height": 360,
+        "width": 420,
+        "height": 520,
         "minWidth": 320,
-        "minHeight": 240,
+        "minHeight": 380,
         "decorations": false,
         "alwaysOnTop": true,
         "transparent": false,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "./settings.css";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
@@ -24,6 +25,7 @@
   let settingsFps = $state(60);
   let settingsResolution = $state("captured");
   let settingsSaved = $state(false);
+  let appVersion = $state("");
   let unlistenError: (() => void) | null = null;
 
   function getInvokeError(e: unknown): string {
@@ -67,8 +69,9 @@
       const s = await invoke<{ fps: number; resolution: string }>("get_capture_settings");
       settingsFps = s.fps;
       settingsResolution = s.resolution ?? "captured";
+      appVersion = await invoke<string>("get_app_version");
     } catch {
-      // keep defaults
+      /* keep defaults */
     }
   }
 
@@ -115,178 +118,96 @@
 </script>
 
 <svelte:head>
-  <title>LiteView Settings</title>
+  <title>LiteView — Settings</title>
 </svelte:head>
 
-<div class="settings">
+<div class="app">
   <header class="header" data-tauri-drag-region>
-    <span class="title">LiteView Settings</span>
+    <div class="header-brand">
+      <span class="logo" aria-hidden="true">◉</span>
+      <h1 class="title">LiteView</h1>
+      {#if capturing}
+        <span class="status-pill status-live" title="Capture is running">
+          <span class="status-dot"></span>
+          Live
+        </span>
+      {/if}
+    </div>
   </header>
 
   <main class="main">
     {#if error}
-      <p class="error" role="alert">{error}</p>
+      <div class="alert alert-error" role="alert">
+        <span class="alert-icon">!</span>
+        <span>{error}</span>
+      </div>
     {/if}
 
-    <section class="section" aria-labelledby="capture-settings-heading">
-      <h2 id="capture-settings-heading" class="section-title">Capture settings</h2>
-      <p class="hint">Applied the next time you start capture from the tray.</p>
+    <section class="card">
+      <h2 class="card-title">Capture</h2>
+      <p class="card-desc">FPS and output resolution. Saved automatically when you change them; applied on the next capture start.</p>
 
-      <div class="field">
-        <label for="fps">FPS</label>
-        <select id="fps" bind:value={settingsFps} class="select">
-          {#each FPS_OPTIONS as fps}
-            <option value={fps}>{fps}</option>
-          {/each}
-        </select>
+      <div class="form-row">
+        <div class="field">
+          <label for="fps">Frame rate</label>
+          <select
+            id="fps"
+            bind:value={settingsFps}
+            class="input"
+            onchange={() => saveSettings()}
+          >
+            {#each FPS_OPTIONS as fps}
+              <option value={fps}>{fps} fps</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="resolution">Resolution</label>
+          <select
+            id="resolution"
+            bind:value={settingsResolution}
+            class="input"
+            onchange={() => saveSettings()}
+          >
+            {#each RESOLUTION_OPTIONS as opt}
+              <option value={opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
       </div>
 
-      <div class="field">
-        <label for="resolution">Resolution</label>
-        <select id="resolution" bind:value={settingsResolution} class="select">
-          {#each RESOLUTION_OPTIONS as opt}
-            <option value={opt.value}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-
-      <button type="button" class="btn btn-save" onclick={saveSettings}>
-        {settingsSaved ? "Saved" : "Save settings"}
+      <button
+        type="button"
+        class="btn btn-primary"
+        onclick={saveSettings}
+        aria-pressed={settingsSaved}
+      >
+        {#if settingsSaved}
+          <span class="btn-icon">✓</span>
+          Saved
+        {:else}
+          Save settings
+        {/if}
       </button>
     </section>
 
-    <section class="section">
-      <p class="hint">
-        Use the system tray to <strong>Start</strong> (PipeWire/screen selection) or <strong>Stop</strong> capture.
-        The preview appears in a separate window when capture is running.
+    <section class="card card-muted">
+      <h2 class="card-title">How to use</h2>
+      <p class="card-desc">
+        Click the <strong>tray icon</strong> and choose <strong>Start capture…</strong> to pick a screen or window (PipeWire).
+        The preview opens in a separate window. Use <strong>Stop capture</strong> when done.
       </p>
-      {#if capturing}
-        <p class="status">Capture is running.</p>
-      {/if}
+      <p class="card-desc">
+        Closing this window hides it to the tray; the app keeps running until you choose <strong>Quit LiteView</strong>.
+      </p>
     </section>
+
+    {#if appVersion}
+      <section class="card card-compact about">
+        <h2 class="card-title">About</h2>
+        <p class="about-version">LiteView v{appVersion}</p>
+        <p class="about-desc">Lightweight screen preview via system tray.</p>
+      </section>
+    {/if}
   </main>
 </div>
-
-<style>
-  .settings {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    color: var(--fg);
-  }
-
-  .header {
-    display: flex;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-    background: var(--header-bg);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .title {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .main {
-    flex: 1;
-    padding: 1rem 0.75rem;
-    overflow: auto;
-  }
-
-  .section {
-    margin-bottom: 1.5rem;
-  }
-
-  .section-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    margin: 0 0 0.25rem 0;
-  }
-
-  .field {
-    margin-top: 0.75rem;
-  }
-
-  .field label {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--muted);
-    margin-bottom: 0.25rem;
-  }
-
-  .select {
-    width: 100%;
-    max-width: 12rem;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.8rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--input-bg);
-    color: var(--fg);
-    cursor: pointer;
-  }
-
-  .btn-save {
-    margin-top: 0.75rem;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    cursor: pointer;
-    font-family: inherit;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border-color: var(--accent);
-  }
-
-  .btn-save:hover {
-    filter: brightness(1.1);
-  }
-
-  .error {
-    color: var(--error);
-    font-size: 0.875rem;
-    margin: 0 0 0.75rem 0;
-  }
-
-  .hint {
-    color: var(--muted);
-    font-size: 0.875rem;
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .status {
-    margin-top: 0.75rem;
-    font-size: 0.875rem;
-    color: var(--accent);
-  }
-
-  :global(:root) {
-    --bg: #1a1a1a;
-    --fg: #e5e5e5;
-    --header-bg: #252525;
-    --border: #3a3a3a;
-    --preview-bg: #0d0d0d;
-    --muted: #737373;
-    --error: #f87171;
-    --accent: #3b82f6;
-    --input-bg: #2a2a2a;
-  }
-
-  @media (prefers-color-scheme: light) {
-    :global(:root) {
-      --bg: #f5f5f5;
-      --fg: #171717;
-      --header-bg: #e5e5e5;
-      --border: #d4d4d4;
-      --muted: #737373;
-      --error: #dc2626;
-      --accent: #2563eb;
-      --input-bg: #fff;
-    }
-  }
-</style>
