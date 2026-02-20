@@ -26,6 +26,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          # Update version in all project files so the build uses the tag version
+          sed -i "s/\"version\":\"[^\"]*\"/\"version\":\"$VERSION\"/" src-tauri/tauri.conf.json
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-24.04'
@@ -65,12 +79,13 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Creates a GitHub Release and attaches all built installers (.deb, .rpm, .exe, .msi, etc.)
       - name: Build and release (Tauri)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: liteview-v__VERSION__
+          tagName: v__VERSION__
           releaseName: "LiteView v__VERSION__"
           releaseBody: "Installers for Linux (.deb, .rpm) and Windows (.exe, .msi)."
           releaseDraft: true
