@@ -421,6 +421,14 @@ fn stop_capture(state: State<CaptureState>) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::HiDpi::{
+            SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        };
+        let _ = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(CaptureState::default())

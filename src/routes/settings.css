@@ -9,6 +9,7 @@
 .app .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0.75rem 1rem;
   background: var(--header-bg);
   border-bottom: 2px solid var(--accent);
@@ -34,6 +35,34 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
+}
+
+.app .header-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  font-weight: 300;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app .header-close:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.app .header-close:active {
+  background: var(--border-hover);
 }
 
 .app .status-pill {

@@ -16,6 +16,8 @@ use winit::window::{Window, WindowAttributes, WindowId};
 use winit::platform::wayland::EventLoopBuilderExtWayland;
 #[cfg(target_os = "linux")]
 use winit::platform::x11::EventLoopBuilderExtX11;
+#[cfg(target_os = "windows")]
+use winit::platform::windows::EventLoopBuilderExtWindows;
 
 const FPS_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -433,6 +435,8 @@ impl ApplicationHandler for PreviewApp {
 
                     if let Ok(window) = event_loop.create_window(attrs) {
                         let window = Arc::new(window);
+                        #[cfg(target_os = "windows")]
+                        window.set_visible(true);
                         let mut ctx = pollster::block_on(WgpuContext::new(window.clone()));
                         ctx.update_texture(frame_data.width, frame_data.height, &frame_data.buffer);
                         let _ = ctx.render();
@@ -468,6 +472,11 @@ pub fn run_preview_window(slot: PreviewStateSlot) {
         } else {
             EventLoopBuilderExtX11::with_any_thread(&mut event_loop_builder, true);
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        EventLoopBuilderExtWindows::with_any_thread(&mut event_loop_builder, true);
     }
 
     let event_loop = match event_loop_builder.build() {

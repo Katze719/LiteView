@@ -2588,6 +2588,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "wgpu",
+ "windows 0.58.0",
  "winit",
 ]
 

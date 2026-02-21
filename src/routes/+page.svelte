@@ -34,6 +34,10 @@
   let targetsLoading = $state(false);
   let unlistenError: (() => void) | null = null;
 
+  function closeWindow() {
+    if (isTauri) getCurrentWindow().hide();
+  }
+
   function getInvokeError(e: unknown): string {
     if (typeof e === "string") return e;
     if (e instanceof Error) return e.message;
@@ -154,8 +158,8 @@
 </svelte:head>
 
 <div class="app">
-  <header class="header" data-tauri-drag-region>
-    <div class="header-brand">
+  <header class="header">
+    <div class="header-brand" data-tauri-drag-region>
       <span class="logo" aria-hidden="true">◉</span>
       <h1 class="title">LiteView</h1>
       {#if capturing}
@@ -165,6 +169,17 @@
         </span>
       {/if}
     </div>
+    {#if isTauri}
+      <button
+        type="button"
+        class="header-close"
+        onclick={closeWindow}
+        aria-label="Close window"
+        title="Close (hide to tray)"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    {/if}
   </header>
 
   <main class="main">
