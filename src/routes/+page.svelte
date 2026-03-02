@@ -26,7 +26,7 @@
   let capturing = $state(false);
   let settingsFps = $state(60);
   let settingsResolution = $state("captured");
-  let settingsTargetIndex = $state<string>("");
+  let settingsTargetId = $state<string>("");
   let settingsShowCursor = $state(true);
   let settingsSaved = $state(false);
   let appVersion = $state("");
@@ -88,19 +88,28 @@
   async function loadSettings() {
     if (!isTauri) return;
     try {
+      await loadTargets();
       const s = await invoke<{
         fps: number;
         resolution: string;
         target_index: number | null;
+        target_id: number | null;
         show_cursor: boolean;
       }>("get_capture_settings");
       settingsFps = s.fps;
       settingsResolution = s.resolution ?? "captured";
-      settingsTargetIndex =
-        s.target_index != null ? String(s.target_index) : "";
+      // Prefer target_id (stable on Windows); fall back to target_index for old settings
+      settingsTargetId =
+        s.target_id != null
+          ? String(s.target_id)
+          : s.target_index != null
+            ? (() => {
+                const t = captureTargets[s.target_index!];
+                return t ? String(t.id) : "";
+              })()
+            : "";
       settingsShowCursor = s.show_cursor ?? true;
       appVersion = await invoke<string>("get_app_version");
-      await loadTargets();
     } catch {
       /* keep defaults */
     }
@@ -113,10 +122,9 @@
       await invoke("set_capture_settings", {
         fps: Number(settingsFps),
         resolution: settingsResolution,
-        targetIndex:
-          settingsTargetIndex === ""
-            ? null
-            : Number(settingsTargetIndex),
+        targetIndex: null,
+        targetId:
+          settingsTargetId === "" ? null : Number(settingsTargetId),
         showCursor: settingsShowCursor,
       });
       settingsSaved = true;
@@ -198,14 +206,14 @@
         <label for="target">Capture target</label>
         <select
           id="target"
-          bind:value={settingsTargetIndex}
+          bind:value={settingsTargetId}
           class="input"
           disabled={targetsLoading}
           onchange={() => saveSettings()}
         >
           <option value="">Default (primary)</option>
           {#each captureTargets as t}
-            <option value={t.index}>
+            <option value={t.id}>
               [{#if t.kind === "display"}Display{:else}Window{/if}] {t.title || "Unnamed"}
             </option>
           {/each}

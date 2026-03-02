@@ -10,7 +10,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::window::{Window, WindowAttributes, WindowId};
+use winit::window::{Window, WindowAttributes, WindowId, WindowLevel};
 
 #[cfg(target_os = "linux")]
 use winit::platform::wayland::EventLoopBuilderExtWayland;
@@ -431,7 +431,9 @@ impl ApplicationHandler for PreviewApp {
                         .with_title("LiteView Preview")
                         .with_inner_size(LogicalSize::new(frame_data.width, frame_data.height))
                         .with_resizable(true)
-                        .with_decorations(false);
+                        .with_decorations(false)
+                        .with_window_level(WindowLevel::AlwaysOnTop)
+                        .with_visible(true);
 
                     if let Ok(window) = event_loop.create_window(attrs) {
                         let window = Arc::new(window);

@@ -50,6 +50,9 @@ struct CaptureSettings {
     resolution: String,
     #[serde(default)]
     target_index: Option<usize>,
+    /// Target ID (stable across get_all_targets calls). Used on Windows where enumeration order is non-deterministic.
+    #[serde(default)]
+    target_id: Option<u32>,
     #[serde(default = "default_show_cursor")]
     show_cursor: bool,
 }
@@ -60,6 +63,7 @@ impl Default for CaptureSettings {
             fps: DEFAULT_CAPTURE_FPS,
             resolution: DEFAULT_RESOLUTION.to_string(),
             target_index: None,
+            target_id: None,
             show_cursor: true,
         }
     }
@@ -148,6 +152,7 @@ struct CaptureSettingsDto {
     fps: u32,
     resolution: String,
     target_index: Option<usize>,
+    target_id: Option<u32>,
     show_cursor: bool,
 }
 
@@ -158,7 +163,15 @@ fn get_capture_settings(state: State<CaptureState>) -> CaptureSettingsDto {
         fps: s.fps,
         resolution: s.resolution.clone(),
         target_index: s.target_index,
+        target_id: s.target_id,
         show_cursor: s.show_cursor,
+    }
+}
+
+fn target_id(t: &Target) -> u32 {
+    match t {
+        Target::Display(d) => d.id,
+        Target::Window(w) => w.id,
     }
 }
 
@@ -168,6 +181,7 @@ fn set_capture_settings(
     fps: u32,
     resolution: String,
     target_index: Option<usize>,
+    target_id: Option<u32>,
     show_cursor: bool,
     state: State<CaptureState>,
 ) -> Result<(), String> {
@@ -181,6 +195,7 @@ fn set_capture_settings(
         fps,
         resolution: resolution.clone(),
         target_index,
+        target_id,
         show_cursor,
     };
     *state.settings.lock().unwrap() = settings.clone();
@@ -343,7 +358,12 @@ fn start_capture(
     let stop_requested_clone = state.stop_requested.clone();
 
     thread::spawn(move || {
-        let target = target_index_for_thread.and_then(|idx| get_all_targets().into_iter().nth(idx));
+        let targets = get_all_targets();
+        let target = settings.target_id
+            .and_then(|id| targets.iter().find(|t| target_id(t) == id).cloned())
+            .or_else(|| {
+                target_index_for_thread.and_then(|idx| targets.into_iter().nth(idx))
+            });
         let options = Options {
             fps: settings.fps,
             show_cursor: settings.show_cursor,
